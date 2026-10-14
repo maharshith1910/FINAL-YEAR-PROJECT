@@ -1,126 +1,289 @@
 """
-dashboard/app.py
-----------------
-Streamlit dashboard for the Smart Crime Detection system.
-
-Features:
-  ✅ Upload audio file → real-time window scoring timeline
-  ✅ Live threat score gauge
-  ✅ Incident alert log with severity badges
-  ✅ Model comparison (CNN vs CNN-LSTM metrics from JSON)
-  ✅ Confusion matrix & PR curve viewer
-  ✅ CSV export of alert log
-  ✅ Threshold sweep slider
-
-Run:
-    streamlit run dashboard/app.py
+dashboard/app.py  ·  SafeWatch AI  ·  Deep Learning Threat Detection
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LOVABLE-INSPIRED DESIGN — neon-teal / crimson glassmorphism
+Run:  streamlit run dashboard/app.py
 """
 
-import sys
-import json
-import time
-import tempfile
+import sys, json, time, tempfile, math
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
-
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from inference.alert_logger import AlertLogger
-from inference.predictor import ScreamPredictor, extract_mel
-import librosa
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-# ─── Page config ───────────────────────────────────────────────────────────────
+try:
+    from inference.alert_logger import AlertLogger
+    from inference.predictor    import ScreamPredictor, extract_mel
+    import librosa
+    DEPS_OK = True
+except ImportError as e:
+    DEPS_OK = False
+    _IMPORT_ERR = str(e)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PAGE CONFIG
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title  = "SafeWatch AI — Smart Crime Detection",
-    page_icon   = "🚨",
-    layout      = "wide",
-    initial_sidebar_state = "expanded",
+    page_title="SafeWatch AI — Deep Learning Threat Detection",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# GLOBAL CSS  (Lovable-inspired: neon teal + crimson + deep slate)
+# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-  html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, [class*="css"] {
+  font-family: 'Space Grotesk', sans-serif;
+  color: #e2e8f0;
+}
+.stApp {
+  background: radial-gradient(ellipse at 20% 10%, #0d1f2d 0%, #060e18 40%, #050c14 100%);
+  min-height: 100vh;
+}
 
-  /* Dark gradient background */
-  .stApp { background: linear-gradient(135deg, #0a0e1a 0%, #0f1629 50%, #0a0e1a 100%); }
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #071525 0%, #050d1a 100%) !important;
+  border-right: 1px solid rgba(0,229,204,0.1) !important;
+}
+[data-testid="stSidebar"] * { color: #cbd5e1 !important; }
 
-  /* Metric cards */
-  .metric-card {
-    background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 16px;
-    padding: 20px 24px;
-    backdrop-filter: blur(12px);
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .metric-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99,102,241,0.15); }
+/* ── Hide streamlit chrome ── */
+#MainMenu, footer, header { visibility: hidden !important; }
+[data-testid="stToolbar"] { display: none !important; }
 
-  /* Alert severity badges */
-  .badge-high   { background:#dc2626; color:white; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
-  .badge-medium { background:#d97706; color:white; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
-  .badge-low    { background:#059669; color:white; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
-  .badge-pending{ background:#6366f1; color:white; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
+/* ── Tab bar ── */
+[data-testid="stTabs"] > div:first-child {
+  border-bottom: 1px solid rgba(0,229,204,0.15) !important;
+  gap: 4px;
+}
+[data-testid="stTabs"] button {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
+  letter-spacing: 0.04em !important;
+  color: #64748b !important;
+  border-radius: 8px 8px 0 0 !important;
+  padding: 8px 18px !important;
+  transition: all .2s !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+  color: #00e5cc !important;
+  background: rgba(0,229,204,0.07) !important;
+  border-bottom: 2px solid #00e5cc !important;
+}
 
-  /* Alert fire animation */
-  @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.4)} 50%{box-shadow:0 0 0 12px rgba(220,38,38,0)} }
-  .alert-active { animation: pulse-red 1.5s infinite; border-color: #dc2626 !important; }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #060e18; }
+::-webkit-scrollbar-thumb { background: #00e5cc44; border-radius: 4px; }
 
-  /* Section headers */
-  .section-header {
-    font-size: 1.1rem; font-weight: 700; color: #a5b4fc;
-    border-bottom: 1px solid rgba(165,180,252,0.2);
-    padding-bottom: 8px; margin-bottom: 16px; letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
+/* ── Metric card ── */
+.sw-card {
+  background: linear-gradient(135deg,rgba(0,229,204,.06),rgba(0,229,204,.02));
+  border: 1px solid rgba(0,229,204,.14);
+  border-radius: 16px;
+  padding: 18px 22px;
+  backdrop-filter: blur(16px);
+  transition: transform .2s, box-shadow .25s;
+  position: relative;
+  overflow: hidden;
+}
+.sw-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,transparent,rgba(0,229,204,.4),transparent);
+}
+.sw-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 32px rgba(0,229,204,.12);
+}
 
-  /* Sidebar */
-  .css-1d391kg { background: rgba(10,14,26,0.9); }
+/* ── Alert card (pulsing red) ── */
+@keyframes pulse-border {
+  0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.5); }
+  50%      { box-shadow: 0 0 0 10px rgba(239,68,68,.0); }
+}
+.sw-alert-banner {
+  background: linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05));
+  border: 1px solid rgba(239,68,68,.5);
+  border-radius: 14px;
+  padding: 16px 20px;
+  animation: pulse-border 1.8s infinite;
+  margin-bottom: 18px;
+}
 
-  /* Hide streamlit branding */
-  #MainMenu, footer, header { visibility: hidden; }
+/* ── Section header ── */
+.sw-section {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #00e5cc;
+  border-bottom: 1px solid rgba(0,229,204,.18);
+  padding-bottom: 8px;
+  margin-bottom: 18px;
+  margin-top: 6px;
+}
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #0a0e1a; }
-  ::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 3px; }
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  padding: 3px 11px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.badge-high   { background: rgba(239,68,68,.25);  color: #f87171; border:1px solid rgba(239,68,68,.4); }
+.badge-medium { background: rgba(251,146,60,.2);  color: #fb923c; border:1px solid rgba(251,146,60,.4);}
+.badge-low    { background: rgba(52,211,153,.2);  color: #34d399; border:1px solid rgba(52,211,153,.4);}
+.badge-ok     { background: rgba(0,229,204,.15);  color: #00e5cc; border:1px solid rgba(0,229,204,.35);}
+
+/* ── Logo text ── */
+.sw-logo-title {
+  font-size: 1.35rem; font-weight: 700;
+  background: linear-gradient(135deg, #00e5cc, #22d3ee);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.sw-logo-sub {
+  font-size: 0.7rem; color: #475569; letter-spacing: .08em;
+  text-transform: uppercase; margin-top: 3px;
+}
+
+/* ── Stat number ── */
+.stat-big   { font-size: 1.9rem; font-weight: 700; color: #f8fafc; line-height: 1; }
+.stat-label { font-size: 0.68rem; color: #64748b; margin-top: 5px; letter-spacing:.05em; }
+
+/* ── Code mono ── */
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ── Divider ── */
+.sw-divider {
+  height: 1px;
+  background: linear-gradient(90deg,transparent,rgba(0,229,204,.2),transparent);
+  margin: 20px 0;
+}
+
+/* ── Status dot ── */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.dot-live  { display:inline-block;width:8px;height:8px;border-radius:50%;background:#34d399;animation:blink 1.4s infinite;margin-right:6px; }
+.dot-idle  { display:inline-block;width:8px;height:8px;border-radius:50%;background:#475569;margin-right:6px; }
+.dot-alert { display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;animation:blink .8s infinite;margin-right:6px; }
+
+/* ── Hero banner ── */
+.hero {
+  background: linear-gradient(135deg,rgba(0,229,204,.08),rgba(34,211,238,.04));
+  border: 1px solid rgba(0,229,204,.12);
+  border-radius: 20px;
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+}
+.hero::after {
+  content:'';
+  position:absolute;
+  right:-60px; top:-60px;
+  width:200px; height:200px;
+  background: radial-gradient(circle, rgba(0,229,204,.12) 0%, transparent 70%);
+  pointer-events:none;
+}
+
+/* ── Streamlit overrides ── */
+.stSlider > div > div > div { background: rgba(0,229,204,.3) !important; }
+.stSlider > div > div > div > div { background: #00e5cc !important; }
+div[data-testid="stSelectbox"] > div { background: rgba(0,229,204,.05) !important;
+  border: 1px solid rgba(0,229,204,.2) !important; border-radius: 10px !important; }
+div[data-testid="stTextInput"] > div { background: rgba(0,229,204,.05) !important;
+  border: 1px solid rgba(0,229,204,.2) !important; border-radius: 10px !important; }
+.stButton > button {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+  transition: all .2s !important;
+}
+.stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #00e5cc, #22d3ee) !important;
+  color: #050c14 !important;
+  border: none !important;
+}
+.stButton > button[kind="primary"]:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 24px rgba(0,229,204,.4) !important;
+}
+.stFileUploader > div {
+  background: rgba(0,229,204,.04) !important;
+  border: 2px dashed rgba(0,229,204,.25) !important;
+  border-radius: 14px !important;
+}
+.stDataFrame { border-radius: 12px !important; }
+
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Constants & paths ─────────────────────────────────────────────────────────
-METRICS_DIR    = Path("outputs/metrics")
-CHECKPOINT_DIR = Path("models/checkpoints")
+# ──────────────────────────────────────────────────────────────────────────────
+# CONSTANTS
+# ──────────────────────────────────────────────────────────────────────────────
+METRICS_DIR    = ROOT / "outputs" / "metrics"
+CHECKPOINT_DIR = ROOT / "models" / "checkpoints"
 SAMPLE_RATE    = 22050
 WINDOW_SEC     = 1.0
 HOP_SEC        = 0.5
 
-# ─── Session state init ────────────────────────────────────────────────────────
-if "predictor"      not in st.session_state: st.session_state.predictor      = None
-if "results"        not in st.session_state: st.session_state.results        = []
-if "alert_logger"   not in st.session_state: st.session_state.alert_logger   = AlertLogger()
-if "model_type"     not in st.session_state: st.session_state.model_type     = "cnn_lstm"
-if "threshold"      not in st.session_state: st.session_state.threshold      = 0.65
-if "consec"         not in st.session_state: st.session_state.consec         = 3
+# ──────────────────────────────────────────────────────────────────────────────
+# SESSION STATE
+# ──────────────────────────────────────────────────────────────────────────────
+_defaults = dict(
+    predictor    = None,
+    results      = [],
+    alert_logger = None,
+    model_type   = "cnn_lstm",
+    threshold    = 0.65,
+    consec       = 3,
+    location     = "Camera A — Main Entrance",
+)
+for k, v in _defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+if st.session_state.alert_logger is None and DEPS_OK:
+    st.session_state.alert_logger = AlertLogger()
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
 
-def load_predictor(model_type, threshold, consec):
-    ckpt = CHECKPOINT_DIR / f"{model_type}_best.pth"
-    st.session_state.predictor = ScreamPredictor(
-        model_type          = model_type,
-        threshold           = threshold,
-        consecutive_windows = consec,
-        location_label      = st.session_state.get("location", "Camera A"),
-    )
-    return st.session_state.predictor
+def load_predictor():
+    if not DEPS_OK:
+        return False
+    try:
+        st.session_state.predictor = ScreamPredictor(
+            model_type          = st.session_state.model_type,
+            threshold           = st.session_state.threshold,
+            consecutive_windows = st.session_state.consec,
+            location_label      = st.session_state.location,
+        )
+        return True
+    except Exception as e:
+        st.error(f"❌ Could not load model: {e}\n\nRun training first:  `python training/train.py --model cnn_lstm`")
+        return False
 
 
 def load_metrics(model_type: str) -> dict | None:
@@ -131,473 +294,686 @@ def load_metrics(model_type: str) -> dict | None:
     return None
 
 
-def color_for_prob(p: float) -> str:
-    if p >= 0.75: return "#dc2626"
-    if p >= 0.50: return "#d97706"
-    return "#059669"
+def prob_color(p: float) -> str:
+    if p >= 0.75: return "#ef4444"
+    if p >= 0.50: return "#fb923c"
+    return "#34d399"
 
 
-def make_gauge(value: float, title: str = "Threat Level") -> go.Figure:
+def pct(v): return f"{v*100:.1f}%"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PLOTLY FIGURES
+# ──────────────────────────────────────────────────────────────────────────────
+
+PLOT_BG = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+AXIS_STYLE = dict(color="#475569", gridcolor="rgba(0,229,204,0.06)", zeroline=False)
+
+
+def make_gauge(value: float) -> go.Figure:
+    color = prob_color(value)
     fig = go.Figure(go.Indicator(
-        mode  = "gauge+number+delta",
+        mode  = "gauge+number",
         value = value * 100,
-        delta = {"reference": 50, "valueformat": ".1f"},
-        title = {"text": title, "font": {"size": 16, "color": "#a5b4fc", "family": "Inter"}},
-        number= {"suffix": "%", "font": {"size": 28, "color": "white"}},
+        number= {"suffix": "%", "font": {"size": 32, "color": "white", "family": "Space Grotesk"}},
+        title = {"text": "THREAT SCORE", "font": {"size": 10, "color": "#00e5cc",
+                 "family": "Space Grotesk"}, },
         gauge = {
-            "axis":  {"range": [0, 100], "tickcolor": "#4f46e5", "tickfont": {"color": "#6b7280"}},
-            "bar":   {"color": color_for_prob(value), "thickness": 0.25},
+            "axis":  {"range": [0, 100], "tickcolor": "#1e293b",
+                      "tickfont": {"color": "#475569", "size": 9}},
+            "bar":   {"color": color, "thickness": 0.22},
             "bgcolor": "rgba(0,0,0,0)",
-            "bordercolor": "rgba(255,255,255,0.1)",
+            "borderwidth": 0,
             "steps": [
-                {"range": [0,  50], "color": "rgba(5,150,105,0.15)"},
-                {"range": [50, 75], "color": "rgba(217,119,6,0.15)"},
-                {"range": [75,100], "color": "rgba(220,38,38,0.15)"},
+                {"range": [0,  50], "color": "rgba(52,211,153,0.08)"},
+                {"range": [50, 75], "color": "rgba(251,146,60,0.08)"},
+                {"range": [75,100], "color": "rgba(239,68,68,0.12)"},
             ],
             "threshold": {
-                "line":  {"color": "#f59e0b", "width": 3},
-                "thickness": 0.8,
-                "value": st.session_state.threshold * 100
-            }
+                "line":  {"color": "#f59e0b", "width": 2},
+                "thickness": 0.75,
+                "value": st.session_state.threshold * 100,
+            },
         }
     ))
-    fig.update_layout(
-        height=220, margin=dict(t=30, b=0, l=20, r=20),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)"
-    )
+    fig.update_layout(**PLOT_BG, height=200, margin=dict(t=28, b=0, l=10, r=10))
     return fig
 
 
 def make_timeline(results: list) -> go.Figure:
     if not results:
-        return go.Figure()
+        fig = go.Figure()
+        fig.update_layout(**PLOT_BG, height=260,
+                          xaxis={**AXIS_STYLE, "title":""},
+                          yaxis={**AXIS_STYLE, "title":""},
+                          annotations=[{"text":"Upload an audio file to begin analysis",
+                                        "xref":"paper","yref":"paper","x":.5,"y":.5,
+                                        "showarrow":False,"font":{"color":"#334155","size":14}}])
+        return fig
 
-    ts    = [r.timestamp_sec for r in results]
-    probs = [r.scream_prob   for r in results]
-    alert = [r.is_alert      for r in results]
-    colors = [color_for_prob(p) for p in probs]
+    ts     = [r.timestamp_sec for r in results]
+    probs  = [r.scream_prob   for r in results]
+    alerts = [r.is_alert      for r in results]
+    colors = [prob_color(p)   for p in probs]
 
     fig = go.Figure()
 
-    # Shaded alert regions
-    for i, a in enumerate(alert):
+    # Alert shading
+    for i, a in enumerate(alerts):
         if a:
-            x0 = ts[i] - HOP_SEC / 2
-            x1 = ts[i] + HOP_SEC / 2
-            fig.add_vrect(x0=x0, x1=x1, fillcolor="rgba(220,38,38,0.2)",
-                          line_width=0, layer="below")
+            fig.add_vrect(x0=ts[i]-HOP_SEC/2, x1=ts[i]+HOP_SEC/2,
+                          fillcolor="rgba(239,68,68,0.12)", line_width=0, layer="below")
 
-    # Threshold line
-    fig.add_hline(
-        y = st.session_state.threshold, line_dash="dot",
-        line_color="#f59e0b", line_width=1.5,
-        annotation_text=f"Threshold {st.session_state.threshold:.2f}",
-        annotation_font_color="#f59e0b"
-    )
+    # Threshold
+    fig.add_hline(y=st.session_state.threshold, line_dash="dot",
+                  line_color="#f59e0b", line_width=1.5,
+                  annotation_text=f"Threshold {st.session_state.threshold:.2f}",
+                  annotation_font_color="#f59e0b", annotation_font_size=10)
 
-    # Probability trace
+    # Main prob trace
     fig.add_trace(go.Scatter(
-        x=ts, y=probs,
-        mode="lines+markers",
-        name="P(scream)",
-        line=dict(color="#6366f1", width=2.5, shape="spline"),
-        marker=dict(size=6, color=colors, line=dict(color="white", width=1)),
-        fill="tozeroy",
-        fillcolor="rgba(99,102,241,0.08)",
-        hovertemplate="t=%{x:.2f}s<br>P(scream)=%{y:.3f}<extra></extra>",
+        x=ts, y=probs, mode="lines+markers", name="P(scream)",
+        line=dict(color="#00e5cc", width=2.5, shape="spline"),
+        marker=dict(size=5, color=colors, line=dict(color="rgba(0,0,0,0.3)", width=1)),
+        fill="tozeroy", fillcolor="rgba(0,229,204,0.05)",
+        hovertemplate="<b>t=%{x:.2f}s</b><br>P(scream)=%{y:.3f}<extra></extra>",
     ))
 
     fig.update_layout(
-        height=280,
-        xaxis=dict(title="Time (seconds)", color="#9ca3af", gridcolor="rgba(255,255,255,0.05)"),
-        yaxis=dict(title="P(scream)", range=[0, 1], color="#9ca3af", gridcolor="rgba(255,255,255,0.05)"),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=16, b=40, l=50, r=20),
-        legend=dict(font=dict(color="#9ca3af")),
-        font=dict(color="#9ca3af"),
+        **PLOT_BG, height=260,
+        margin=dict(t=10, b=40, l=52, r=12),
+        xaxis={**AXIS_STYLE, "title": "Time (seconds)"},
+        yaxis={**AXIS_STYLE, "title": "P(scream)", "range": [0, 1]},
+        legend=dict(font=dict(color="#64748b", size=10), bgcolor="rgba(0,0,0,0)"),
+        font=dict(color="#64748b", family="Space Grotesk"),
     )
     return fig
 
 
-def render_metrics_card(metrics: dict | None, model_name: str):
-    if metrics is None:
-        st.info(f"No test results yet for **{model_name}**. Run `python training/evaluate.py --model {model_name}`")
-        return
+def make_comparison_radar(cnn_m: dict, lstm_m: dict) -> go.Figure:
+    cats = ["Accuracy", "Precision", "Recall", "F1", "Low FPR"]
+    def _vals(m):
+        return [m["accuracy"], m["precision"], m["recall"],
+                m["f1"], 1 - m["false_positive_rate"]]
 
-    cols = st.columns(6)
-    items = [
-        ("Accuracy",  f"{metrics['accuracy']*100:.1f}%",  "📊"),
-        ("Precision", f"{metrics['precision']*100:.1f}%", "🎯"),
-        ("Recall",    f"{metrics['recall']*100:.1f}%",    "🔍"),
-        ("F1 Score",  f"{metrics['f1']*100:.1f}%",        "⚖️"),
-        ("FPR",       f"{metrics['false_positive_rate']*100:.1f}%", "⚠️"),
-        ("Latency",   f"{metrics['avg_latency_ms']:.1f}ms", "⚡"),
-    ]
-    for col, (label, val, icon) in zip(cols, items):
-        with col:
-            st.markdown(f"""
-            <div class="metric-card" style="text-align:center">
-              <div style="font-size:1.5rem">{icon}</div>
-              <div style="font-size:1.5rem; font-weight:800; color:white">{val}</div>
-              <div style="font-size:0.75rem; color:#6b7280; margin-top:4px">{label}</div>
-            </div>""", unsafe_allow_html=True)
+    fig = go.Figure()
+    for m, name, color in [(cnn_m,"CNN","#22d3ee"), (lstm_m,"CNN-LSTM","#00e5cc")]:
+        v = _vals(m)
+        fig.add_trace(go.Scatterpolar(
+            r=v + [v[0]], theta=cats + [cats[0]], name=name,
+            line=dict(color=color, width=2),
+            fill="toself", fillcolor=color.replace("#","rgba(").replace("e","e,")+",.08)" if False else f"{color}18",
+        ))
 
-    if metrics.get("note"):
-        st.caption(f"ℹ️ {metrics['note']}")
+    fig.update_layout(
+        **PLOT_BG, height=300,
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0, 1], color="#334155",
+                            gridcolor="rgba(0,229,204,0.1)", tickfont=dict(size=8)),
+            angularaxis=dict(color="#64748b", gridcolor="rgba(0,229,204,0.1)"),
+        ),
+        legend=dict(font=dict(color="#64748b"), bgcolor="rgba(0,0,0,0)"),
+        margin=dict(t=20, b=20, l=50, r=50),
+        font=dict(color="#64748b", family="Space Grotesk"),
+    )
+    return fig
 
 
-# ─── Sidebar ───────────────────────────────────────────────────────────────────
-
+# ──────────────────────────────────────────────────────────────────────────────
+# SIDEBAR
+# ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style="text-align:center; padding: 16px 0">
-      <div style="font-size:2.5rem">🚨</div>
-      <div style="font-size:1.2rem; font-weight:800; color:white">SafeWatch AI</div>
-      <div style="font-size:0.75rem; color:#6b7280; margin-top:4px">Smart Crime Detection</div>
+    <div style="padding:20px 0 16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:2rem">🛡️</div>
+        <div>
+          <div class="sw-logo-title">SafeWatch AI</div>
+          <div class="sw-logo-sub">Threat Detection System</div>
+        </div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
-    st.divider()
 
-    st.markdown('<div class="section-header">⚙️ Model Settings</div>', unsafe_allow_html=True)
+    # Status indicator
+    loaded = st.session_state.predictor is not None
+    dot    = "dot-live" if loaded else "dot-idle"
+    status = "Model Active" if loaded else "No Model Loaded"
+    st.markdown(f'<div style="font-size:.75rem;margin-bottom:12px">'
+                f'<span class="{dot}"></span><span style="color:#64748b">{status}</span></div>',
+                unsafe_allow_html=True)
+
+    st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sw-section">⚙️ Model Config</div>', unsafe_allow_html=True)
 
     model_type = st.selectbox(
-        "Detection Model",
+        "Architecture",
         options=["cnn_lstm", "cnn"],
         format_func=lambda x: "CNN-LSTM (Temporal)" if x == "cnn_lstm" else "CNN (Baseline)",
         key="model_type",
     )
 
-    location = st.text_input("📍 Location Label", value="Camera A", key="location")
+    location = st.text_input("📍 Location Label", key="location")
 
-    threshold = st.slider(
-        "Alert Threshold",
-        min_value=0.3, max_value=0.95, value=0.65, step=0.05,
-        key="threshold",
-        help="P(scream) must exceed this value per window"
-    )
+    threshold = st.slider("Alert Threshold", 0.30, 0.95, key="threshold", step=0.05,
+                          help="Minimum P(scream) to trigger alert")
 
-    consec = st.slider(
-        "Consecutive Windows",
-        min_value=1, max_value=8, value=3,
-        key="consec",
-        help="How many consecutive windows above threshold before alert fires"
-    )
+    consec = st.slider("Consecutive Windows", 1, 8, key="consec",
+                       help="Windows above threshold before alert fires")
 
-    if st.button("🔄 Load / Reload Model", use_container_width=True, type="primary"):
-        with st.spinner("Loading model checkpoint…"):
-            load_predictor(model_type, threshold, consec)
-        st.success("Model loaded!")
+    if st.button("⚡ Load / Reload Model", use_container_width=True, type="primary"):
+        with st.spinner("Initialising model checkpoint…"):
+            ok = load_predictor()
+        if ok:
+            st.success("✅ Model loaded successfully!")
 
-    st.divider()
-    st.markdown('<div class="section-header">📋 Alert Stats</div>', unsafe_allow_html=True)
+    if not DEPS_OK:
+        st.warning(f"Missing dependency: {_IMPORT_ERR}\n\nRun:  `pip install -r requirements.txt`")
 
-    stats = st.session_state.alert_logger.stats()
+    st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sw-section">📊 Session Stats</div>', unsafe_allow_html=True)
+
+    # Stats grid
+    al = st.session_state.alert_logger
+    stats = al.stats() if al else {"total": 0, "high": 0, "medium": 0, "pending": 0}
+
     st.markdown(f"""
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
-      <div class="metric-card" style="text-align:center">
-        <div style="font-size:1.5rem;color:white;font-weight:800">{stats['total']}</div>
-        <div style="font-size:0.7rem;color:#6b7280">Total Alerts</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="sw-card" style="padding:12px 14px;text-align:center">
+        <div class="stat-big">{stats['total']}</div>
+        <div class="stat-label">TOTAL ALERTS</div>
       </div>
-      <div class="metric-card" style="text-align:center">
-        <div style="font-size:1.5rem;color:#dc2626;font-weight:800">{stats['high']}</div>
-        <div style="font-size:0.7rem;color:#6b7280">HIGH</div>
+      <div class="sw-card" style="padding:12px 14px;text-align:center">
+        <div class="stat-big" style="color:#ef4444">{stats['high']}</div>
+        <div class="stat-label">HIGH SEVERITY</div>
       </div>
-      <div class="metric-card" style="text-align:center">
-        <div style="font-size:1.5rem;color:#d97706;font-weight:800">{stats['medium']}</div>
-        <div style="font-size:0.7rem;color:#6b7280">MEDIUM</div>
+      <div class="sw-card" style="padding:12px 14px;text-align:center">
+        <div class="stat-big" style="color:#fb923c">{stats['medium']}</div>
+        <div class="stat-label">MEDIUM</div>
       </div>
-      <div class="metric-card" style="text-align:center">
-        <div style="font-size:1.5rem;color:#6366f1;font-weight:800">{stats['pending']}</div>
-        <div style="font-size:0.7rem;color:#6b7280">Pending</div>
+      <div class="sw-card" style="padding:12px 14px;text-align:center">
+        <div class="stat-big" style="color:#00e5cc">{stats['pending']}</div>
+        <div class="stat-label">PENDING</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("""
+    <div class="sw-divider"></div>
+    <div style="font-size:.65rem;color:#334155;text-align:center;line-height:1.6">
+      All detections are <em>potential distress events</em><br>requiring human verification.
+    </div>
+    """, unsafe_allow_html=True)
 
-# ─── Main content tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🎙️ Live Detection",
-    "📊 Model Performance",
-    "🚨 Incident Log",
-    "ℹ️ About",
+# ──────────────────────────────────────────────────────────────────────────────
+# TABS
+# ──────────────────────────────────────────────────────────────────────────────
+tab_detect, tab_perf, tab_log, tab_about = st.tabs([
+    "🎙️  Detect",
+    "📈  Performance",
+    "🚨  Incidents",
+    "ℹ️   About",
 ])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Live Detection
+# TAB 1 — DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
-with tab1:
+with tab_detect:
+
+    # Hero
     st.markdown("""
-    <h2 style="color:white; font-weight:800; margin-bottom:4px">
-      🎙️ Real-Time Threat Detection
-    </h2>
-    <p style="color:#6b7280; margin-bottom:24px">
-      Upload an audio file to analyse. Each second-long window is scored by
-      the model and flagged if the scream probability exceeds the threshold
-      for N consecutive windows.
-    </p>
+    <div class="hero">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+        <span style="font-size:1.6rem">🎙️</span>
+        <span style="font-size:1.25rem;font-weight:700;color:#f8fafc">Real-Time Threat Detection</span>
+      </div>
+      <div style="color:#64748b;font-size:.85rem;max-width:600px">
+        Upload an audio clip — the model scores every 1-second window via Mel spectrogram analysis
+        and fires an alert when P(scream) exceeds the threshold for N consecutive windows.
+      </div>
+    </div>
     """, unsafe_allow_html=True)
 
-    # ── Check model loaded
-    if st.session_state.predictor is None:
-        st.warning("⚠️ No model loaded. Click **Load / Reload Model** in the sidebar first.")
-        st.info("If checkpoints are missing, run:\n```\npython training/train.py --model cnn_lstm\n```")
+    if not DEPS_OK:
+        st.error(f"⚠️ Cannot run detection — dependency missing: `{_IMPORT_ERR}`\n\n"
+                 "```\npip install -r requirements.txt\n```")
+        st.stop()
 
-    col_upload, col_gauge = st.columns([2, 1])
+    if st.session_state.predictor is None:
+        st.info("👈 **Load a model** from the sidebar first.  "
+                "If no checkpoint exists yet, run:\n"
+                "```\npython training/train.py --model cnn_lstm --epochs 30\n```")
+
+    col_upload, col_gauge = st.columns([3, 1], gap="large")
 
     with col_upload:
-        st.markdown('<div class="section-header">📁 Upload Audio</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sw-section">📁 Upload Audio File</div>', unsafe_allow_html=True)
+
         uploaded = st.file_uploader(
-            "Drop a .wav file here",
+            "Drop a .wav / .mp3 / .flac file here",
             type=["wav", "mp3", "flac", "ogg"],
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
         if uploaded and st.session_state.predictor:
-            # Save to temp file
             suffix = Path(uploaded.name).suffix
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(uploaded.read())
                 tmp_path = tmp.name
 
-            with st.spinner(f"🔍 Analysing {uploaded.name} …"):
+            with st.spinner(f"🔍 Analysing  **{uploaded.name}** …"):
                 results = st.session_state.predictor.process_file(tmp_path)
                 st.session_state.results = results
 
-            n_alerts = sum(1 for r in results if r.is_alert)
+            n_alerts  = sum(1 for r in results if r.is_alert)
             max_prob  = max((r.scream_prob for r in results), default=0.0)
+            dur_s     = results[-1].timestamp_sec if results else 0
 
+            # ── Banner
             if n_alerts > 0:
                 st.markdown(f"""
-                <div class="metric-card alert-active" style="border:1px solid #dc2626;margin-bottom:16px;padding:16px">
-                  <span style="font-size:1.5rem">🚨</span>
-                  <span style="color:#dc2626;font-weight:800;font-size:1.1rem;margin-left:8px">
-                    {n_alerts} DISTRESS EVENT(S) DETECTED — Requires human verification
+                <div class="sw-alert-banner">
+                  <span class="dot-alert"></span>
+                  <span style="color:#f87171;font-weight:700;font-size:1rem">
+                    {n_alerts} POTENTIAL DISTRESS EVENT(S) DETECTED
                   </span>
+                  <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
+                    Peak confidence {max_prob:.1%} · Duration {dur_s:.1f}s ·
+                    Requires human verification before any action is taken.
+                  </div>
                 </div>""", unsafe_allow_html=True)
             else:
-                st.success(f"✅ No threats detected in {len(results)} windows. Max P(scream) = {max_prob:.3f}")
+                st.markdown(f"""
+                <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);
+                     border-radius:12px;padding:14px 18px;margin-bottom:16px">
+                  <span style="color:#34d399;font-weight:700">✅ No threats detected</span>
+                  <span style="color:#64748b;font-size:.82rem;margin-left:10px">
+                    {len(results)} windows analysed · Max P(scream) = {max_prob:.3f}
+                  </span>
+                </div>""", unsafe_allow_html=True)
 
-            # Timeline
-            st.markdown('<div class="section-header">📈 Detection Timeline</div>', unsafe_allow_html=True)
-            st.plotly_chart(make_timeline(results), use_container_width=True)
-
-            # Per-window table (collapsible)
-            with st.expander("🔢 Raw Window Scores"):
-                rows = [{"Time (s)": f"{r.timestamp_sec:.2f}",
-                         "P(scream)": f"{r.scream_prob:.4f}",
-                         "Status": r.label} for r in results]
-                df_r = pd.DataFrame(rows)
-                st.dataframe(df_r, use_container_width=True, height=200)
+            # ── Summary cards
+            c1, c2, c3, c4 = st.columns(4)
+            for col, (label, val, color, icon) in zip(
+                [c1, c2, c3, c4], [
+                    ("Windows", len(results),   "#e2e8f0", "📦"),
+                    ("Alerts",  n_alerts,        "#ef4444", "🚨"),
+                    ("Peak P(scream)", f"{max_prob:.3f}", "#fb923c", "📊"),
+                    ("Duration", f"{dur_s:.1f}s", "#00e5cc", "⏱️"),
+                ]
+            ):
+                with col:
+                    st.markdown(f"""
+                    <div class="sw-card" style="text-align:center;padding:14px">
+                      <div style="font-size:1.1rem">{icon}</div>
+                      <div style="font-size:1.4rem;font-weight:700;color:{color}">{val}</div>
+                      <div class="stat-label">{label}</div>
+                    </div>""", unsafe_allow_html=True)
 
         elif uploaded and st.session_state.predictor is None:
-            st.error("Load a model checkpoint first.")
+            st.warning("Load a model first, then re-upload the file.")
+
+        # ── Timeline
+        st.markdown('<div class="sw-section" style="margin-top:20px">📈 Detection Timeline</div>',
+                    unsafe_allow_html=True)
+        st.plotly_chart(make_timeline(st.session_state.results), use_container_width=True)
+
+        # ── Raw table
+        if st.session_state.results:
+            with st.expander("🔢 Raw Window Scores"):
+                rows = [{"t (s)": f"{r.timestamp_sec:.2f}",
+                         "P(scream)": f"{r.scream_prob:.4f}",
+                         "Alert": "🚨" if r.is_alert else "—",
+                         "Label": r.label}
+                        for r in st.session_state.results]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, height=200)
 
     with col_gauge:
-        st.markdown('<div class="section-header">🌡️ Threat Level</div>', unsafe_allow_html=True)
-        results = st.session_state.results
-        current_prob = max((r.scream_prob for r in results), default=0.0) if results else 0.0
-        st.plotly_chart(make_gauge(current_prob), use_container_width=True)
+        st.markdown('<div class="sw-section">🌡️ Threat Level</div>', unsafe_allow_html=True)
+        res = st.session_state.results
+        peak = max((r.scream_prob for r in res), default=0.0)
+        st.plotly_chart(make_gauge(peak), use_container_width=True)
 
-        if results:
-            alerts = [r for r in results if r.is_alert]
-            st.markdown(f"""
-            <div style="margin-top:8px">
-              <div style="color:#9ca3af;font-size:0.8rem">Windows analysed</div>
-              <div style="color:white;font-weight:700;font-size:1.2rem">{len(results)}</div>
-              <div style="color:#9ca3af;font-size:0.8rem;margin-top:8px">Alert events fired</div>
-              <div style="color:#dc2626;font-weight:700;font-size:1.2rem">{len(alerts)}</div>
-              <div style="color:#9ca3af;font-size:0.8rem;margin-top:8px">Peak confidence</div>
-              <div style="color:#f59e0b;font-weight:700;font-size:1.2rem">{current_prob:.3f}</div>
-            </div>""", unsafe_allow_html=True)
+        # Status pill
+        if peak >= 0.75:
+            pill_c, pill_t = "#ef4444", "CRITICAL"
+        elif peak >= 0.50:
+            pill_c, pill_t = "#fb923c", "WARNING"
+        elif peak > 0:
+            pill_c, pill_t = "#34d399", "CLEAR"
+        else:
+            pill_c, pill_t = "#334155", "IDLE"
 
-        st.caption("⚠️ All detections are flagged as *potential* distress events requiring human verification.")
+        st.markdown(f"""
+        <div style="text-align:center;margin-top:6px">
+          <span style="background:{pill_c}22;border:1px solid {pill_c}66;
+                color:{pill_c};font-size:.7rem;font-weight:700;
+                padding:5px 16px;border-radius:20px;letter-spacing:.08em">
+            {pill_t}
+          </span>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="margin-top:18px;display:grid;gap:8px">
+          <div class="sw-card" style="padding:10px 14px">
+            <div class="stat-label">MODEL</div>
+            <div style="color:#00e5cc;font-weight:600;font-size:.85rem;margin-top:3px">
+              {"CNN-LSTM" if st.session_state.model_type=="cnn_lstm" else "Baseline CNN"}
+            </div>
+          </div>
+          <div class="sw-card" style="padding:10px 14px">
+            <div class="stat-label">THRESHOLD</div>
+            <div style="color:#f8fafc;font-weight:600;font-size:.85rem;margin-top:3px">
+              {st.session_state.threshold:.2f}
+            </div>
+          </div>
+          <div class="sw-card" style="padding:10px 14px">
+            <div class="stat-label">LOCATION</div>
+            <div style="color:#f8fafc;font-weight:600;font-size:.78rem;margin-top:3px">
+              {st.session_state.location}
+            </div>
+          </div>
+        </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Model Performance
+# TAB 2 — PERFORMANCE
 # ══════════════════════════════════════════════════════════════════════════════
-with tab2:
+with tab_perf:
     st.markdown("""
-    <h2 style="color:white; font-weight:800; margin-bottom:4px">📊 Model Performance</h2>
-    <p style="color:#6b7280; margin-bottom:24px">
-      All metrics are computed on the held-out test set. No data fabrication.
-    </p>
+    <div class="hero">
+      <div style="font-size:1.2rem;font-weight:700;color:#f8fafc;margin-bottom:4px">
+        📈 Model Performance Dashboard
+      </div>
+      <div style="color:#64748b;font-size:.83rem">
+        All metrics computed on the held-out test set. No figures are fabricated.
+        Run <code style="background:rgba(0,229,204,.1);padding:1px 6px;border-radius:4px">
+        python training/evaluate.py --model cnn_lstm</code> to populate.
+      </div>
+    </div>
     """, unsafe_allow_html=True)
 
-    for model_name, display_name in [("cnn", "Baseline CNN"), ("cnn_lstm", "CNN-LSTM (Temporal)")]:
-        st.markdown(f'<div class="section-header">🔬 {display_name}</div>', unsafe_allow_html=True)
-        metrics = load_metrics(model_name)
-        render_metrics_card(metrics, model_name)
+    cnn_m  = load_metrics("cnn")
+    lstm_m = load_metrics("cnn_lstm")
 
-        # Show plots if available
-        if metrics:
-            col_cm, col_pr = st.columns(2)
-            with col_cm:
-                cm_path = METRICS_DIR / f"{model_name}_confusion_matrix.png"
-                if cm_path.exists():
-                    st.image(str(cm_path), caption="Confusion Matrix", use_column_width=True)
-            with col_pr:
-                pr_path = METRICS_DIR / f"{model_name}_pr_curve.png"
-                if pr_path.exists():
-                    st.image(str(pr_path), caption="Precision-Recall Curve", use_column_width=True)
+    def render_model_block(m: dict | None, model_key: str, display: str):
+        st.markdown(f'<div class="sw-section">🔬 {display}</div>', unsafe_allow_html=True)
+        if m is None:
+            st.info(f"No test results for **{display}** yet.  "
+                    f"Run: `python training/evaluate.py --model {model_key}`")
+            return
 
-            # Loss curves
-            curve_path = METRICS_DIR / f"{model_name}_curves.png"
-            if curve_path.exists():
-                st.image(str(curve_path), caption="Training Curves", use_column_width=True)
+        cols = st.columns(6)
+        items = [
+            ("Accuracy",  pct(m["accuracy"]),                   "#00e5cc", "📊"),
+            ("Precision", pct(m["precision"]),                  "#22d3ee", "🎯"),
+            ("Recall",    pct(m["recall"]),                     "#38bdf8", "🔍"),
+            ("F1 Score",  pct(m["f1"]),                         "#818cf8", "⚖️"),
+            ("FPR",       pct(m["false_positive_rate"]),        "#f87171", "⚠️"),
+            ("Latency",   f"{m['avg_latency_ms']:.1f}ms",       "#fb923c", "⚡"),
+        ]
+        for col, (lbl, val, color, icon) in zip(cols, items):
+            with col:
+                st.markdown(f"""
+                <div class="sw-card" style="text-align:center;padding:14px 10px">
+                  <div style="font-size:1.1rem">{icon}</div>
+                  <div style="font-size:1.35rem;font-weight:700;color:{color};margin-top:4px">{val}</div>
+                  <div class="stat-label">{lbl}</div>
+                </div>""", unsafe_allow_html=True)
 
-            # Confusion matrix breakdown
-            if metrics.get("confusion_matrix"):
-                cm = metrics["confusion_matrix"]
-                if len(cm) == 2:
-                    tn, fp, fn, tp = cm[0][0], cm[0][1], cm[1][0], cm[1][1]
-                    cols = st.columns(4)
-                    for col, (label, val, color) in zip(cols, [
-                        ("True Negative",  tn, "#059669"),
-                        ("False Positive", fp, "#dc2626"),
-                        ("False Negative", fn, "#d97706"),
-                        ("True Positive",  tp, "#6366f1"),
-                    ]):
-                        with col:
-                            st.markdown(f"""
-                            <div class="metric-card" style="text-align:center">
-                              <div style="font-size:1.4rem;font-weight:800;color:{color}">{val}</div>
-                              <div style="font-size:0.7rem;color:#6b7280">{label}</div>
-                            </div>""", unsafe_allow_html=True)
+        # Plots
+        col_cm, col_pr = st.columns(2)
+        with col_cm:
+            cm_path = METRICS_DIR / f"{model_key}_confusion_matrix.png"
+            if cm_path.exists():
+                st.image(str(cm_path), caption="Confusion Matrix", use_column_width=True)
+        with col_pr:
+            pr_path = METRICS_DIR / f"{model_key}_pr_curve.png"
+            if pr_path.exists():
+                st.image(str(pr_path), caption="Precision-Recall Curve", use_column_width=True)
 
-        st.divider()
+        curve_path = METRICS_DIR / f"{model_key}_curves.png"
+        if curve_path.exists():
+            st.image(str(curve_path), caption="Training Loss & Accuracy", use_column_width=True)
 
-    # Comparison table
-    st.markdown('<div class="section-header">📋 Side-by-Side Comparison</div>', unsafe_allow_html=True)
-    cnn_m    = load_metrics("cnn")
-    lstm_m   = load_metrics("cnn_lstm")
+        if m.get("confusion_matrix"):
+            cm = m["confusion_matrix"]
+            if len(cm) == 2:
+                tn, fp, fn, tp = cm[0][0], cm[0][1], cm[1][0], cm[1][1]
+                c1, c2, c3, c4 = st.columns(4)
+                for col, (lbl, val, color) in zip([c1,c2,c3,c4], [
+                    ("True Negative",  tn, "#34d399"),
+                    ("False Positive", fp, "#ef4444"),
+                    ("False Negative", fn, "#fb923c"),
+                    ("True Positive",  tp, "#818cf8"),
+                ]):
+                    with col:
+                        st.markdown(f"""
+                        <div class="sw-card" style="text-align:center;padding:12px">
+                          <div style="font-size:1.5rem;font-weight:700;color:{color}">{val}</div>
+                          <div class="stat-label">{lbl}</div>
+                        </div>""", unsafe_allow_html=True)
 
+        if m.get("note"):
+            st.caption(f"ℹ️ {m['note']}")
+
+    render_model_block(cnn_m,  "cnn",      "Baseline CNN")
+    st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
+    render_model_block(lstm_m, "cnn_lstm", "CNN-LSTM (Temporal)")
+
+    # ── Radar comparison
     if cnn_m and lstm_m:
-        comp = pd.DataFrame({
-            "Metric":    ["Accuracy", "Precision", "Recall", "F1", "FPR", "Latency (ms)"],
-            "CNN":       [cnn_m["accuracy"],  cnn_m["precision"],  cnn_m["recall"],
-                          cnn_m["f1"],         cnn_m["false_positive_rate"], cnn_m["avg_latency_ms"]],
-            "CNN-LSTM":  [lstm_m["accuracy"], lstm_m["precision"], lstm_m["recall"],
-                          lstm_m["f1"],        lstm_m["false_positive_rate"], lstm_m["avg_latency_ms"]],
-        })
-        st.dataframe(comp, use_container_width=True, hide_index=True)
-    else:
-        st.info("Run evaluation for both models to see comparison:\n"
-                "```\npython training/evaluate.py --model cnn\n"
-                "python training/evaluate.py --model cnn_lstm\n```")
+        st.markdown('<div class="sw-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sw-section">📊 Head-to-Head Comparison</div>', unsafe_allow_html=True)
+
+        col_rad, col_tbl = st.columns([1, 1], gap="large")
+        with col_rad:
+            st.plotly_chart(make_comparison_radar(cnn_m, lstm_m), use_container_width=True)
+        with col_tbl:
+            comp = pd.DataFrame({
+                "Metric":   ["Accuracy", "Precision", "Recall", "F1", "FPR", "Latency (ms)"],
+                "CNN":      [pct(cnn_m["accuracy"]),  pct(cnn_m["precision"]),
+                             pct(cnn_m["recall"]),    pct(cnn_m["f1"]),
+                             pct(cnn_m["false_positive_rate"]), f"{cnn_m['avg_latency_ms']:.1f}"],
+                "CNN-LSTM": [pct(lstm_m["accuracy"]), pct(lstm_m["precision"]),
+                             pct(lstm_m["recall"]),   pct(lstm_m["f1"]),
+                             pct(lstm_m["false_positive_rate"]), f"{lstm_m['avg_latency_ms']:.1f}"],
+            })
+            st.dataframe(comp, use_container_width=True, hide_index=True, height=250)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Incident Log
+# TAB 3 — INCIDENTS
 # ══════════════════════════════════════════════════════════════════════════════
-with tab3:
+with tab_log:
     st.markdown("""
-    <h2 style="color:white; font-weight:800; margin-bottom:4px">🚨 Incident Log</h2>
-    <p style="color:#6b7280; margin-bottom:24px">
-      All alerts logged by the system. Each event requires human verification
-      before any action is taken.
-    </p>
+    <div class="hero">
+      <div style="font-size:1.2rem;font-weight:700;color:#f8fafc;margin-bottom:4px">
+        🚨 Incident Command Center
+      </div>
+      <div style="color:#64748b;font-size:.83rem">
+        All logged alerts require human verification before any action is taken.
+      </div>
+    </div>
     """, unsafe_allow_html=True)
 
-    df_alerts = st.session_state.alert_logger.load_all()
+    al = st.session_state.alert_logger
+    df_alerts = al.load_all() if al else pd.DataFrame()
 
     col_f1, col_f2, col_refresh = st.columns([2, 2, 1])
     with col_f1:
-        sev_filter = st.multiselect("Filter by Severity", ["HIGH", "MEDIUM", "LOW"],
-                                    default=["HIGH", "MEDIUM", "LOW"])
+        sev_filter = st.multiselect(
+            "Severity", ["HIGH", "MEDIUM", "LOW"], default=["HIGH", "MEDIUM", "LOW"])
     with col_f2:
-        status_filter = st.multiselect("Filter by Status", ["PENDING", "VERIFIED", "FALSE_ALARM"],
-                                       default=["PENDING", "VERIFIED", "FALSE_ALARM"])
+        status_filter = st.multiselect(
+            "Status", ["PENDING", "VERIFIED", "FALSE_ALARM"],
+            default=["PENDING", "VERIFIED", "FALSE_ALARM"])
     with col_refresh:
-        if st.button("🔄 Refresh", use_container_width=True):
-            df_alerts = st.session_state.alert_logger.load_all()
+        if st.button("🔄", use_container_width=True, help="Refresh alerts"):
+            df_alerts = al.load_all() if al else pd.DataFrame()
 
     if not df_alerts.empty:
         mask = (df_alerts["severity"].isin(sev_filter) &
                 df_alerts["verification_status"].isin(status_filter))
-        df_filtered = df_alerts[mask]
+        df_f = df_alerts[mask]
 
-        if not df_filtered.empty:
-            # Severity bar chart
-            sev_counts = df_filtered["severity"].value_counts().reset_index()
-            sev_counts.columns = ["severity", "count"]
-            color_map = {"HIGH": "#dc2626", "MEDIUM": "#d97706", "LOW": "#059669"}
-            fig_bar = px.bar(
-                sev_counts, x="severity", y="count", color="severity",
-                color_discrete_map=color_map,
-                title="Alert Distribution by Severity"
-            )
-            fig_bar.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#9ca3af"), showlegend=False,
-                title_font=dict(color="white"), margin=dict(t=40)
-            )
+        if not df_f.empty:
+            # Severity bar
+            counts = df_f["severity"].value_counts().reset_index()
+            counts.columns = ["severity", "count"]
+            cmap = {"HIGH": "#ef4444", "MEDIUM": "#fb923c", "LOW": "#34d399"}
+            fig_bar = px.bar(counts, x="severity", y="count", color="severity",
+                             color_discrete_map=cmap)
+            fig_bar.update_layout(**PLOT_BG, height=200, showlegend=False,
+                                  margin=dict(t=10,b=30,l=40,r=10),
+                                  xaxis={**AXIS_STYLE}, yaxis={**AXIS_STYLE},
+                                  font=dict(color="#64748b",family="Space Grotesk"))
+            fig_bar.update_traces(marker_line_width=0)
             st.plotly_chart(fig_bar, use_container_width=True)
 
-            # Table with colour-coded rows
-            st.dataframe(
-                df_filtered[["alert_id","timestamp_iso","location","confidence",
-                             "severity","model_used","verification_status","note"]],
-                use_container_width=True, height=300,
-            )
+            display_cols = [c for c in
+                            ["alert_id","timestamp_iso","location","confidence",
+                             "severity","model_used","verification_status","note"]
+                            if c in df_f.columns]
+            st.dataframe(df_f[display_cols], use_container_width=True, height=280)
 
-            # CSV download
-            csv_data = df_filtered.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇️ Download Alert Log (CSV)",
-                data       = csv_data,
-                file_name  = "alert_log_export.csv",
-                mime       = "text/csv",
-                use_container_width = True,
-            )
+            csv_data = df_f.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Export CSV", data=csv_data,
+                               file_name="safewatch_alerts.csv", mime="text/csv",
+                               use_container_width=True)
         else:
-            st.info("No alerts match the current filters.")
+            st.info("No alerts match the selected filters.")
     else:
-        st.info("No alerts logged yet. Upload and analyse an audio file in the **Live Detection** tab.")
+        st.info("No incidents logged yet. Upload and analyse audio in the **Detect** tab.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — About
+# TAB 4 — ABOUT
 # ══════════════════════════════════════════════════════════════════════════════
-with tab4:
-    st.markdown("""
-    <h2 style="color:white; font-weight:800">ℹ️ About SafeWatch AI</h2>
+with tab_about:
+    col_a, col_b = st.columns([3, 2], gap="large")
 
-    <div style="color:#d1d5db; line-height:1.8; max-width:700px">
+    with col_a:
+        st.markdown("""
+        <div style="color:#f8fafc">
 
-    <h3 style="color:#a5b4fc">🎯 Project Overview</h3>
-    <p>
-    SafeWatch AI is a deep learning-based audio threat detection system that identifies
-    potential distress events (screams) in real time using Mel spectrogram analysis.
-    </p>
+        <h2 style="font-weight:700;background:linear-gradient(135deg,#00e5cc,#22d3ee);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px">
+          SafeWatch AI
+        </h2>
+        <div style="color:#64748b;font-size:.85rem;margin-bottom:24px">
+          Deep Learning Human Threat Detection · Final Year Project
+        </div>
 
-    <h3 style="color:#a5b4fc">🧠 Architecture</h3>
-    <ul>
-      <li><strong>Baseline CNN:</strong> 4 convolutional blocks on 128-band log-Mel spectrograms</li>
-      <li><strong>CNN-LSTM:</strong> CNN feature extractor + 2-layer LSTM over consecutive windows</li>
-      <li><strong>Smoothing:</strong> N consecutive windows above threshold before alert fires</li>
-      <li><strong>Feature:</strong> 1-second windows, 50% overlap, 22,050 Hz sample rate</li>
-    </ul>
+        <div class="sw-section">🎯 Project Overview</div>
+        <p style="color:#94a3b8;font-size:.87rem;line-height:1.75">
+          SafeWatch AI is a real-time audio threat detection system that classifies
+          human screams using Mel spectrogram deep learning. It is designed for
+          deployment in security monitoring, healthcare, and emergency response.
+        </p>
 
-    <h3 style="color:#a5b4fc">📚 Datasets</h3>
-    <ul>
-      <li>Screams: Kaggle / Hugging Face human scream audio collections</li>
-      <li>Non-scream: UrbanSound8K (traffic, construction, music, speech)</li>
-      <li>Augmentation: SpecAugment (time/freq masking), Gaussian noise</li>
-    </ul>
+        <div class="sw-section" style="margin-top:20px">🧠 Architecture</div>
+        <div style="display:grid;gap:10px">
+        """, unsafe_allow_html=True)
 
-    <h3 style="color:#a5b4fc">⚠️ Ethical Notice</h3>
-    <p style="border-left:3px solid #dc2626; padding-left:12px">
-    All detections are flagged as <strong>potential distress events requiring human verification</strong>.
-    No personal identification is performed. This system is an assistive tool for security
-    personnel, not an autonomous decision-making system. Results must be reviewed by
-    qualified human operators before any action is taken.
-    </p>
+        arch_items = [
+            ("Baseline CNN", "4 convolutional blocks on 128-band log-Mel spectrograms (1s windows)"),
+            ("CNN-LSTM",     "CNN feature extractor + 2-layer LSTM over 5 consecutive windows"),
+            ("Smoothing",    "Alert fires only after N consecutive windows exceed threshold"),
+            ("Feature",      "22,050 Hz SR · 1s windows · 50% hop · 128 mel bins · log-scale"),
+        ]
+        for title, desc in arch_items:
+            st.markdown(f"""
+            <div class="sw-card" style="padding:12px 16px;margin-bottom:6px">
+              <span style="color:#00e5cc;font-weight:600;font-size:.85rem">{title}</span>
+              <div style="color:#64748b;font-size:.78rem;margin-top:3px">{desc}</div>
+            </div>""", unsafe_allow_html=True)
 
-    <h3 style="color:#a5b4fc">👥 Team</h3>
-    <p>Final Year Project — Deep Learning Human Threat Detection<br>
-    <strong>Maharshith</strong> and team</p>
-    </div>
-    """, unsafe_allow_html=True)
+        st.markdown("""
+        <div class="sw-section" style="margin-top:20px">📚 Datasets</div>
+        <div style="display:grid;gap:8px">
+        """, unsafe_allow_html=True)
+
+        datasets = [
+            ("Human Scream Audio (Kaggle)", "862 scream + 2,631 non-scream clips · MIT License · 44.1kHz WAV"),
+            ("ESC-50",                      "2,000 environmental audio clips · background noise diversity"),
+            ("Augmentation",                "SpecAugment time/freq masking · Gaussian noise · pitch shift"),
+        ]
+        for name, desc in datasets:
+            st.markdown(f"""
+            <div class="sw-card" style="padding:10px 14px;margin-bottom:4px">
+              <span style="color:#22d3ee;font-weight:600;font-size:.82rem">{name}</span>
+              <div style="color:#64748b;font-size:.75rem;margin-top:2px">{desc}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="sw-section" style="margin-top:20px">⚠️ Ethical Notice</div>
+        <div style="background:rgba(239,68,68,.06);border-left:3px solid #ef4444;
+             border-radius:0 10px 10px 0;padding:14px 18px;
+             color:#94a3b8;font-size:.82rem;line-height:1.7">
+          All detections are flagged as <strong style="color:#f87171">potential distress events
+          requiring human verification</strong>. No personal identification is performed.
+          This is an assistive tool for security personnel, not an autonomous decision system.
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_b:
+        st.markdown("""
+        <div class="sw-section">👥 Team</div>
+        """, unsafe_allow_html=True)
+
+        members = [
+            ("Maharshith",  "Lead · Model Architecture & Training"),
+            ("Teammate 2",  "Data Pipeline & Feature Engineering"),
+            ("Teammate 3",  "Dashboard · Evaluation & Report"),
+        ]
+        for name, role in members:
+            st.markdown(f"""
+            <div class="sw-card" style="padding:14px 16px;margin-bottom:8px">
+              <div style="color:#f8fafc;font-weight:600">{name}</div>
+              <div style="color:#64748b;font-size:.75rem;margin-top:2px">{role}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="sw-section" style="margin-top:20px">🛠️ Tech Stack</div>
+        """, unsafe_allow_html=True)
+
+        stack = [
+            ("PyTorch 2.x",    "Model training & inference"),
+            ("torchaudio",     "Audio loading & resampling"),
+            ("librosa",        "Mel spectrogram extraction"),
+            ("audiomentations","Audio augmentation pipeline"),
+            ("Streamlit",      "Interactive dashboard"),
+            ("Plotly",         "Interactive visualizations"),
+        ]
+        for tech, desc in stack:
+            st.markdown(f"""
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                 padding:8px 14px;border-radius:8px;background:rgba(0,229,204,.04);
+                 border:1px solid rgba(0,229,204,.08);margin-bottom:4px">
+              <span style="color:#00e5cc;font-size:.8rem;font-weight:600">{tech}</span>
+              <span style="color:#475569;font-size:.72rem">{desc}</span>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="sw-section" style="margin-top:20px">🔗 Quick Commands</div>
+        <div style="background:rgba(0,229,204,.04);border:1px solid rgba(0,229,204,.1);
+             border-radius:12px;padding:14px 16px;font-family:'JetBrains Mono',monospace;
+             font-size:.72rem;color:#94a3b8;line-height:2">
+          # Install deps<br>
+          <span style="color:#00e5cc">pip</span> install -r requirements.txt<br><br>
+          # Train models<br>
+          <span style="color:#00e5cc">python</span> training/train.py --model cnn --epochs 30<br>
+          <span style="color:#00e5cc">python</span> training/train.py --model cnn_lstm --epochs 30<br><br>
+          # Evaluate<br>
+          <span style="color:#00e5cc">python</span> training/evaluate.py --model cnn<br>
+          <span style="color:#00e5cc">python</span> training/evaluate.py --model cnn_lstm<br><br>
+          # Launch dashboard<br>
+          <span style="color:#00e5cc">streamlit</span> run dashboard/app.py
+        </div>
+        """, unsafe_allow_html=True)

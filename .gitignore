@@ -1,0 +1,63 @@
+# ============================================================
+# SafeWatch AI — .gitignore
+# ============================================================
+
+# ── NEVER push these (too large / reproducible) ─────────────
+
+# Raw audio files (5+ GB — teammates regenerate via download_kagglehub.py)
+data/raw/
+
+# Extracted .npy features (100K files, ~2 GB — regenerate via feature_extraction.py)
+data/features/
+
+# Temporary download files
+data/_tmp/
+
+# Trained model checkpoints (regenerate via train.py)
+# Uncomment if you want to share checkpoints via Git LFS instead:
+models/checkpoints/*.pth
+
+# ── Safe to push ─────────────────────────────────────────────
+# data/features_manifest.csv  <-- YES push this (just 0.6 MB, tells teammates splits)
+
+# ── Python cache ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Jupyter ──────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── IDE / OS ─────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Kaggle credentials (NEVER commit) ────────────────────────
+kaggle.json
+*.json.bak
+~/.kaggle/
+
+# ── Outputs (plots/metrics — optional, can regenerate) ───────
+# Comment these out if you WANT to push your metric plots:
+# outputs/metrics/*.png
+# outputs/metrics/*.json
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+outputs/alerts/*.csv

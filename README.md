@@ -1,109 +1,121 @@
-# 🚨 Deep Learning Human Threat Detection — Smart Crime Monitoring
+# 🛡️ SafeWatch AI — Deep Learning Human Threat Detection
 
-> **Final Review Project | Maharshith | 2-Day Sprint**
+> **Final Year Project · Maharshith & Team · 2026**
+> Smart Crime Detection using CNN + CNN-LSTM Scream Detection
 
-A real-time audio threat detection system using CNN and CNN-LSTM models trained on Mel spectrograms to classify distress/scream events and trigger intelligent alerts.
-
----
-
-## 📁 Project Structure
-
-```
-Major Project/
-├── data/
-│   ├── raw/                  # Raw audio files (.wav)
-│   │   ├── scream/
-│   │   └── non_scream/
-│   ├── processed/            # Extracted Mel spectrogram .npy files
-│   └── manifest.csv          # File manifest with labels & splits
-├── models/
-│   ├── cnn_model.py          # Baseline CNN architecture
-│   ├── cnn_lstm_model.py     # CNN-LSTM architecture
-│   └── checkpoints/          # Saved .pth model weights
-├── training/
-│   ├── train.py              # Main training script
-│   ├── dataset.py            # Dataset class + augmentation
-│   └── evaluate.py           # Evaluation + confusion matrix + curves
-├── inference/
-│   ├── predictor.py          # Real-time inference engine
-│   └── alert_logger.py       # Alert logging to CSV/DB
-├── dashboard/
-│   └── app.py                # Streamlit dashboard
-├── utils/
-│   ├── feature_extraction.py # Mel spectrogram extraction
-│   └── data_prep.py          # Manifest builder + split
-├── outputs/
-│   ├── metrics/              # JSON metrics, confusion matrix, curves
-│   └── alerts/               # alert_log.csv
-├── requirements.txt
-└── run_dashboard.sh
-```
+![Dashboard Preview](docs/preview.png)
 
 ---
 
-## ⚡ Quick Start
+## 🚀 Quick Start (48-Hour Prototype)
 
 ```bash
-# 1. Install dependencies
+# 1. Install all dependencies
 pip install -r requirements.txt
 
-# 2. Prepare data (place audio in data/raw/scream & data/raw/non_scream)
-python utils/data_prep.py
+# 2. Set up Kaggle API token (one-time)
+python utils/setup_kaggle.py
 
-# 3. Extract features
+# 3. Download datasets (~6 GB total)
+python utils/download_datasets.py
+
+# 4. OR run the full pipeline at once
+run_all.bat
+```
+
+## 🧠 Architecture
+
+| Model | Input | Key Layers | Purpose |
+|-------|-------|-----------|---------|
+| **Baseline CNN** | (B, 1, 128, 44) Mel | 4× Conv→BN→ReLU→Pool | Per-frame classification |
+| **CNN-LSTM** | (B, T, 1, 128, 44) | CNN extractor + 2-layer LSTM | Temporal pattern detection |
+
+**Feature pipeline:** 22,050 Hz → 1s windows, 0.5s hop → 128-band log-Mel spectrogram → normalised → model
+
+## 📊 Datasets
+
+| Dataset | Source | Size | License |
+|---------|--------|------|---------|
+| Human Scream Audio | Kaggle (bhavikjikadara) | 862 scream + 2,631 non-scream WAVs | MIT |
+| ESC-50 | GitHub (karoldvl) | 2,000 environmental audio clips | CC BY |
+
+## 🗂️ Project Structure
+
+```
+FINAL-YEAR-PROJECT/
+├── data/
+│   ├── raw/scream/          ← Kaggle Screaming WAVs
+│   ├── raw/non_scream/      ← Kaggle NotScreaming + ESC-50
+│   ├── features/            ← .npy Mel features (auto-created)
+│   └── features_manifest.csv
+├── models/
+│   ├── cnn_model.py         ← Baseline CNN
+│   ├── cnn_lstm_model.py    ← CNN + LSTM
+│   └── checkpoints/         ← best .pth files
+├── training/
+│   ├── dataset.py           ← PyTorch datasets
+│   ├── train.py             ← training loop
+│   └── evaluate.py          ← metrics + plots
+├── inference/
+│   ├── predictor.py         ← inference engine
+│   └── alert_logger.py      ← CSV alert logger
+├── utils/
+│   ├── data_prep.py         ← manifest + train/val/test split
+│   ├── feature_extraction.py← Mel extraction to .npy
+│   ├── setup_kaggle.py      ← Kaggle token wizard
+│   └── download_datasets.py ← automated downloader
+├── dashboard/app.py         ← Streamlit dashboard
+├── outputs/metrics/         ← JSON results, PNGs
+├── CODEX_PROMPTS.py         ← 3 teammate prompts for Codex/Claude
+└── run_all.bat              ← one-click pipeline
+```
+
+## ⚡ Step-by-Step Commands
+
+```bash
+# Data
+python utils/setup_kaggle.py
+python utils/download_datasets.py
+python utils/data_prep.py
 python utils/feature_extraction.py
 
-# 4. Train both models
-python training/train.py --model cnn --epochs 30
-python training/train.py --model cnn_lstm --epochs 30
+# Training
+python training/train.py --model cnn      --epochs 30 --lr 1e-3
+python training/train.py --model cnn_lstm --epochs 30 --lr 1e-3
 
-# 5. Evaluate
+# Evaluation
+python training/evaluate.py --model cnn
 python training/evaluate.py --model cnn_lstm
 
-# 6. Launch Dashboard
+# Dashboard
 streamlit run dashboard/app.py
+# Open: http://localhost:8501
 ```
+
+## 📈 Expected Results (ranges — run eval for real numbers)
+
+| Metric | CNN | CNN-LSTM |
+|--------|-----|----------|
+| Accuracy | ~82–88% | ~85–92% |
+| F1 (scream) | ~75–85% | ~80–88% |
+| FPR | ~8–15% | ~5–12% |
+| Latency/window | ~2–5ms | ~5–15ms |
+
+> ⚠️ These are estimates. **Never report fabricated metrics.** Run `evaluate.py` and use those numbers.
+
+## 🎯 Teammate Prompts
+
+See [`CODEX_PROMPTS.py`](CODEX_PROMPTS.py) for three ready-to-paste Codex prompts:
+- **Prompt 1:** Data pipeline (data_prep + feature_extraction)
+- **Prompt 2:** Model training (CNN, CNN-LSTM, evaluate)
+- **Prompt 3:** Dashboard & inference (predictor + alert_logger)
+
+## ⚠️ Ethical Notice
+
+All detections are flagged as **potential distress events requiring human verification**.
+No personal identification is performed. This is an assistive tool for security
+personnel, not an autonomous decision-making system.
 
 ---
 
-## 🎯 Architecture
-
-```
-Audio Input (mic / file)
-        ↓
-  Overlapping Windows (1s, 50% overlap)
-        ↓
-  Log-Mel Spectrogram (128 bands)
-        ↓
-  ┌─────────────────┐
-  │  CNN Feature    │  (4 conv blocks, BatchNorm, MaxPool)
-  │  Extractor      │
-  └────────┬────────┘
-           ↓
-  ┌─────────────────┐
-  │   LSTM Head     │  (2 layers, 256 hidden, dropout)
-  └────────┬────────┘
-           ↓
-  Scream Probability Score
-        ↓
-  Consecutive-Window Smoother (N=3 threshold)
-        ↓
-  Alert Engine → CSV Log → Streamlit Dashboard
-```
-
----
-
-## 📊 Evaluation Metrics (reported honestly)
-
-- Accuracy, Precision, Recall, F1, False Positive Rate
-- Confusion Matrix (saved as PNG)
-- Loss/Accuracy curves per epoch
-- Inference latency per window (ms)
-- Threshold sweep (Precision-Recall curve)
-
----
-
-## ⚠️ Ethical Statement
-
-All detections are flagged as **"potential distress event — requires human verification."**
-No personal identification is performed. Compliant with Section XIII of the research paper.
+*Deep Learning Human Threat Detection · Smart Crime Detection · 2026*
