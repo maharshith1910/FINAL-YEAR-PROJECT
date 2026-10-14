@@ -7,20 +7,19 @@
 
 ---
 
-## 🚀 Quick Start (48-Hour Prototype)
+## 📚 Documentation & Manuals
+- 📖 **[CLI Manual & Command Guide](CLI_RUN_GUIDE.md)**: Complete step-by-step manual for running every CLI command without confusion.
+- 🔬 **[Proof Verification & System Manual](RUN_AND_VERIFY.md)**: Comprehensive verification guide for examiners and project evaluators.
 
-```bash
-# 1. Install all dependencies
-pip install -r requirements.txt
+## 🚀 Quick Start (One-Shot Verification & Web UI)
 
-# 2. Set up Kaggle API token (one-time)
-python utils/setup_kaggle.py
+```powershell
+# 1. Verify all endpoints and features with 1 command:
+python verify_system.py
 
-# 3. Download datasets (~6 GB total)
-python utils/download_datasets.py
-
-# 4. OR run the full pipeline at once
-run_all.bat
+# 2. Launch the Web Dashboard:
+streamlit run dashboard/app.py
+# Open: http://localhost:8501
 ```
 
 ## 🧠 Architecture
