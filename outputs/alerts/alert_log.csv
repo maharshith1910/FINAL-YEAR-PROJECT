@@ -2,3 +2,5 @@
 FE309ECF,2026-10-13T15:10:25.650150+00:00,12.5,Block A - Parking,0.92,HIGH,cnn_lstm,PENDING,Potential distress event - requires human verification.
 C2DAA088,2026-10-13T15:10:25.651375+00:00,45.0,Block B - Corridor,0.77,MEDIUM,cnn_lstm,PENDING,Potential distress event - requires human verification.
 529B220C,2026-10-13T15:10:25.652495+00:00,78.3,Block A - Parking,0.66,LOW,cnn,PENDING,Potential distress event - requires human verification.
+B5D43A94,2026-10-14T11:26:33.516326+00:00,0.5,Test Lab,0.5,LOW,cnn,PENDING,Potential distress event - requires human verification.
+F0A80571,2026-10-14T11:26:33.547626+00:00,1.5,Test Lab,0.5073,LOW,cnn,PENDING,Potential distress event - requires human verification.

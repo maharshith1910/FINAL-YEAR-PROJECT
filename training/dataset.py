@@ -92,11 +92,14 @@ class ScreamDataset(Dataset):
         split: str           = "train",
         augment: bool        = True,
         target_frames: int   = 44,
+        feat_dir: str | Path | None = None,
     ):
         df = pd.read_csv(manifest_path)
         self.df            = df[df["split"] == split].reset_index(drop=True)
         self.augment       = augment and (split == "train")
         self.target_frames = target_frames
+        self.feat_dir      = Path(feat_dir) if feat_dir else None
+        self.path_col      = "feature_path" if "feature_path" in self.df.columns else "npy_path"
 
         if len(self.df) == 0:
             raise ValueError(f"No data found for split='{split}' in {manifest_path}. "
@@ -105,16 +108,27 @@ class ScreamDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
+    def _resolve_path(self, feat_path: str) -> Path:
+        p = Path(feat_path)
+        if not p.exists() and self.feat_dir:
+            fallback = self.feat_dir / p.name
+            if fallback.exists():
+                return fallback
+        return p
+
     def __getitem__(self, idx: int):
-        row  = self.df.iloc[idx]
-        mel  = np.load(row["npy_path"])   # (n_mels, T)
-        mel  = pad_or_crop(mel, self.target_frames)
+        row = self.df.iloc[idx]
+        feat_path = self._resolve_path(row[self.path_col])
+        mel = np.load(feat_path)
+        if mel.ndim == 3 and mel.shape[0] == 1:
+            mel = mel.squeeze(0)  # (n_mels, T)
+        mel = pad_or_crop(mel, self.target_frames)
 
         if self.augment:
             mel = augment_spectrogram(mel)
 
         mel   = normalize(mel)
-        mel_t = torch.from_numpy(mel).unsqueeze(0)  # (1, n_mels, T)
+        mel_t = torch.from_numpy(mel.astype(np.float32)).unsqueeze(0)  # (1, n_mels, T)
         label = torch.tensor(int(row["label"]), dtype=torch.long)
         return mel_t, label
 
@@ -124,7 +138,7 @@ class ScreamDataset(Dataset):
 class ScreamSequenceDataset(Dataset):
     """
     Loads sequences of N_CONTEXT consecutive spectrogram windows.
-    Windows are sorted by source_file + index; sequences that cross
+    Windows are sorted by source_file/filepath + index; sequences that cross
     source-file boundaries are discarded.
 
     Returns:
@@ -139,25 +153,38 @@ class ScreamSequenceDataset(Dataset):
         n_context: int       = 5,
         augment: bool        = True,
         target_frames: int   = 44,
+        feat_dir: str | Path | None = None,
     ):
         df   = pd.read_csv(manifest_path)
         self.df            = df[df["split"] == split].reset_index(drop=True)
         self.n_context     = n_context
         self.augment       = augment and (split == "train")
         self.target_frames = target_frames
+        self.feat_dir      = Path(feat_dir) if feat_dir else None
+        self.path_col      = "feature_path" if "feature_path" in self.df.columns else "npy_path"
+        self.file_col      = "filepath" if "filepath" in self.df.columns else "source_file"
 
         # Build valid sequence start indices (within the same source file)
         self.sequences = self._build_sequences()
 
+    def _resolve_path(self, feat_path: str) -> Path:
+        p = Path(feat_path)
+        if not p.exists() and self.feat_dir:
+            fallback = self.feat_dir / p.name
+            if fallback.exists():
+                return fallback
+        return p
+
     def _build_sequences(self) -> list[list[int]]:
         sequences = []
-        source_groups = self.df.groupby("source_file")
-
-        for _, group in source_groups:
-            indices = group.index.tolist()
-            for i in range(len(indices) - self.n_context + 1):
-                seq_indices = indices[i : i + self.n_context]
-                sequences.append(seq_indices)
+        if self.file_col not in self.df.columns:
+            return sequences
+        
+        grouped = self.df.groupby(self.file_col, sort=False).indices
+        for _, indices in grouped.items():
+            if len(indices) >= self.n_context:
+                for i in range(len(indices) - self.n_context + 1):
+                    sequences.append(indices[i : i + self.n_context].tolist())
 
         return sequences
 
@@ -170,7 +197,10 @@ class ScreamSequenceDataset(Dataset):
 
         for i in seq_indices:
             row = self.df.iloc[i]
-            mel = np.load(row["npy_path"])
+            feat_path = self._resolve_path(row[self.path_col])
+            mel = np.load(feat_path)
+            if mel.ndim == 3 and mel.shape[0] == 1:
+                mel = mel.squeeze(0)
             mel = pad_or_crop(mel, self.target_frames)
             if self.augment:
                 mel = augment_spectrogram(mel)
@@ -179,7 +209,7 @@ class ScreamSequenceDataset(Dataset):
 
         # Stack into (N_CONTEXT, n_mels, T)
         x = np.stack(mels, axis=0)
-        x = torch.from_numpy(x).unsqueeze(1)   # (N_CONTEXT, 1, n_mels, T)
+        x = torch.from_numpy(x.astype(np.float32)).unsqueeze(1)   # (N_CONTEXT, 1, n_mels, T)
 
         # Label from the last window in the sequence
         label_row = self.df.iloc[seq_indices[-1]]

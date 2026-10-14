@@ -25,6 +25,12 @@ import time
 import argparse
 from pathlib import Path
 
+# Fix Windows console UTF-8 encoding
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import numpy as np
 import pandas as pd
 import torch
@@ -113,7 +119,7 @@ def build_test_loader(
 # ── Inference ──────────────────────────────────────────────────────────────────
 
 def run_inference(
-    model: torch.nn.Module, loader: DataLoader
+    model: torch.nn.Module, loader: DataLoader, max_samples: int | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """
     Returns (y_true, y_pred, y_probs_scream, avg_latency_ms_per_sample).
@@ -124,7 +130,7 @@ def run_inference(
 
     with torch.no_grad():
         for x, y in loader:
-            x = x.to(DEVICE, non_blocking=True)
+            x = x.to(DEVICE)
             t0     = time.perf_counter()
             logits = model(x)
             t1     = time.perf_counter()
@@ -137,6 +143,8 @@ def run_inference(
             all_probs.extend(probs.tolist())
             all_preds.extend(preds.tolist())
             all_labels.extend(labels.tolist())
+            if max_samples and len(all_labels) >= max_samples:
+                break
 
     return (np.array(all_labels), np.array(all_preds),
             np.array(all_probs), float(np.mean(latencies)))
@@ -213,8 +221,10 @@ def evaluate(args: argparse.Namespace) -> None:
     loader = build_test_loader(args.model, manifest, feat_dir,
                                args.n_context, args.batch_size)
     print(f"  Test samples: {len(loader.dataset)}")
+    if args.max_samples:
+        print(f"  Evaluating subset: max {args.max_samples} samples")
 
-    y_true, y_pred, y_probs, avg_lat = run_inference(model, loader)
+    y_true, y_pred, y_probs, avg_lat = run_inference(model, loader, max_samples=args.max_samples)
 
     # ── All metrics from real data (no fabrication)
     acc  = accuracy_score(y_true, y_pred)
@@ -285,6 +295,8 @@ if __name__ == "__main__":
                         help="Directory containing best .pth checkpoints")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Batch size for inference (default: 64)")
-    parser.add_argument("--n_context",  type=int, default=5,
+    parser.add_argument("--n_context",   type=int, default=5,
                         help="Sequence length for cnn_lstm (default: 5)")
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Max test samples to evaluate (default: None, evaluate all)")
     evaluate(parser.parse_args())

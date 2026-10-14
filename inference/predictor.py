@@ -34,15 +34,21 @@ from models.cnn_model import ScreamCNN
 from models.cnn_lstm_model import ScreamCNNLSTM
 from inference.alert_logger import AlertLogger
 
+# Fix Windows console UTF-8 encoding
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # ─── Config ────────────────────────────────────────────────────────────────────
 SAMPLE_RATE    = 22050
 WINDOW_SEC     = 1.0
 HOP_SEC        = 0.5
 N_MELS         = 128
-N_FFT          = 2048
-HOP_LENGTH     = 512
+N_FFT          = 1024
+HOP_LENGTH     = 256
 TARGET_FRAMES  = 44
-FMIN, FMAX     = 20, 8000
+FMIN, FMAX     = 0, 8000
 CHECKPOINT_DIR = Path("models/checkpoints")
 DEVICE         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
