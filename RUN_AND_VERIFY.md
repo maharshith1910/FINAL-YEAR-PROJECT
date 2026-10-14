@@ -242,6 +242,19 @@ python -c "from inference.alert_logger import AlertLogger; l=AlertLogger(); prin
 
 ---
 
+### Proof 7: AI Acoustic Forensic Dossier & Outlier Filtering
+Verify that the system filters vehicle horns and sirens from human screams:
+```powershell
+python -c "from inference.forensic_engine import AcousticForensicEngine; e=AcousticForensicEngine(); horn=e.analyze('data/test_samples/vehicle_horn_outlier.wav', 0.88); scream=e.analyze('data/raw/scream/---1_cCGK4M_out.wav', 0.95); print('Horn Outlier Filtered:', horn.classification, 'Threat:', horn.is_crime_threat); print('Scream Confirmed:', scream.classification, 'Threat:', scream.is_crime_threat)"
+```
+**Expected Output**:
+```text
+Horn Outlier Filtered: VEHICLE_HORN Threat: False
+Scream Confirmed: GENUINE_HUMAN_SCREAM Threat: True
+```
+
+---
+
 ## 5. Troubleshooting & Windows Specifics
 
 1. **Unicode / Console Encoding**:  
@@ -250,3 +263,5 @@ python -c "from inference.alert_logger import AlertLogger; l=AlertLogger(); prin
    Always leave `--num_workers 0` when training on CPU to avoid Windows multiprocessing spawn deadlocks.
 3. **No GPU Available Warning**:  
    SafeWatch AI runs on standard CPU. If an NVIDIA GPU with CUDA is present, PyTorch will automatically switch to CUDA acceleration.
+4. **Gemini API Outlier Reasoning**:  
+   If `GEMINI_API_KEY` is configured in the environment, SafeWatch AI invokes Gemini 2.5 Flash for natural-language forensic rationale generation. If offline, the built-in deterministic bio-acoustic expert engine operates automatically with zero dependencies.

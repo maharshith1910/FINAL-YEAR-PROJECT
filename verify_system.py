@@ -178,6 +178,28 @@ def test_6_dashboard_integrity():
     assert_pass(True, "dashboard/app.py syntax is valid with zero syntax errors")
 
 
+def test_7_forensic_outlier_engine():
+    print_header("TEST 7: Bio-Acoustic Forensic Engine & Outlier Filter")
+    from inference.forensic_engine import AcousticForensicEngine
+
+    engine = AcousticForensicEngine()
+    horn_path = ROOT / "data" / "test_samples" / "vehicle_horn_outlier.wav"
+    scream_path = ROOT / "data" / "raw" / "scream" / "---1_cCGK4M_out.wav"
+
+    assert_pass(horn_path.exists(), f"Found vehicle horn outlier sample: {horn_path.name}")
+    assert_pass(scream_path.exists(), f"Found authentic scream sample: {scream_path.name}")
+
+    # Test Outlier: Vehicle horn should be filtered out
+    horn_rep = engine.analyze(str(horn_path), cnn_prob=0.88)
+    assert_pass(not horn_rep.is_crime_threat,
+                f"Vehicle horn correctly filtered out as outlier: {horn_rep.classification} (Threat={horn_rep.is_crime_threat}, Action={horn_rep.recommended_action})")
+
+    # Test Genuine Threat: Human distress scream should be confirmed
+    scream_rep = engine.analyze(str(scream_path), cnn_prob=0.95)
+    assert_pass(scream_rep.is_crime_threat,
+                f"Human scream correctly verified as genuine distress: {scream_rep.classification} (Threat={scream_rep.is_crime_threat}, Action={scream_rep.recommended_action})")
+
+
 def main():
     print(f"\n{BOLD}═══════════════════════════════════════════════════════════════{RESET}")
     print(f"{BOLD}  SAFEWATCH AI — SYSTEM-WIDE ENDPOINT & PROOF VERIFICATION{RESET}")
@@ -190,9 +212,10 @@ def main():
     test_4_alert_logger()
     test_5_inference_predictor()
     test_6_dashboard_integrity()
+    test_7_forensic_outlier_engine()
 
     elapsed = time.time() - t0
-    print_header(f"ALL 6 SYSTEM VERIFICATION TESTS PASSED! ({elapsed:.2f}s)")
+    print_header(f"ALL 7 SYSTEM VERIFICATION TESTS PASSED! ({elapsed:.2f}s)")
     print(f"{GREEN}{BOLD}  All subsystems verified. Zero loose ends.{RESET}\n")
 
 if __name__ == "__main__":

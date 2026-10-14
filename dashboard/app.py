@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 try:
     from inference.alert_logger import AlertLogger
     from inference.predictor    import ScreamPredictor, extract_mel
+    from inference.forensic_engine import AcousticForensicEngine, ForensicReport
     import librosa
     DEPS_OK = True
 except ImportError as e:
@@ -256,14 +257,16 @@ elif (CHECKPOINT_DIR / "cnn_best.pth").exists():
     _avail_model = "cnn"
 
 _defaults = dict(
-    predictor    = None,
-    results      = [],
-    alert_logger = None,
-    model_type   = _avail_model,
-    threshold    = 0.50,
-    consec       = 2,
-    location     = "Node 01 — North Alleyway CCTV-04",
-    dispatch_msg = None,
+    predictor       = None,
+    forensic_engine = None,
+    forensic_report = None,
+    results         = [],
+    alert_logger    = None,
+    model_type      = _avail_model,
+    threshold       = 0.50,
+    consec          = 2,
+    location        = "Node 01 — North Alleyway CCTV-04",
+    dispatch_msg    = None,
 )
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -271,6 +274,12 @@ for k, v in _defaults.items():
 
 if st.session_state.alert_logger is None and DEPS_OK:
     st.session_state.alert_logger = AlertLogger()
+
+if st.session_state.forensic_engine is None and DEPS_OK:
+    try:
+        st.session_state.forensic_engine = AcousticForensicEngine()
+    except Exception:
+        st.session_state.forensic_engine = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -610,6 +619,9 @@ with tab_detect:
             sample_options = {
                 "🚨 Active Crime / Distress Scream (Scenario #1)": "data/raw/scream/---1_cCGK4M_out.wav",
                 "🚨 Active Crime / Distress Scream (Scenario #2)": "data/raw/scream/-20uudT97E0_out.wav",
+                "🚗 Vehicle Horn / Bus Honk (Acoustic Outlier)": "data/test_samples/vehicle_horn_outlier.wav",
+                "🚨 Emergency Vehicle Siren (Stationary Harmonic)": "data/test_samples/siren_outlier.wav",
+                "🚙 High-Friction Tire Screech (Outlier)": "data/test_samples/tire_screech_outlier.wav",
                 "🟢 Normal Urban Alleyway Ambience (No Threat)": "data/raw/non_scream/--PJHxphWEs_out.wav",
                 "🟢 Normal Street Activity & Footsteps (No Threat)": "data/raw/non_scream/-28U1_qW0sU_out.wav",
             }
@@ -645,6 +657,16 @@ with tab_detect:
                 results = st.session_state.predictor.process_file(audio_to_process)
                 st.session_state.results = results
                 st.session_state.dispatch_msg = None
+
+                # Run Bio-Acoustic Forensic Outlier Analysis
+                if st.session_state.forensic_engine:
+                    max_p = max((r.scream_prob for r in results), default=0.0)
+                    with st.spinner("🤖 Evaluating Bio-Acoustic Physics & Outliers via Gemini Forensic AI …"):
+                        st.session_state.forensic_report = st.session_state.forensic_engine.analyze(
+                            audio_to_process,
+                            cnn_prob=max_p,
+                            location=st.session_state.location
+                        )
 
         if st.session_state.results:
             results   = st.session_state.results
@@ -692,6 +714,84 @@ with tab_detect:
                       <div style="font-size:1.4rem;font-weight:700;color:{color}">{val}</div>
                       <div class="stat-label">{label}</div>
                     </div>""", unsafe_allow_html=True)
+
+            # ── AI Forensic Intelligence Dossier & Outlier Filter
+            if st.session_state.get("forensic_report"):
+                rep = st.session_state.forensic_report
+                fp = rep.fingerprint or {}
+                
+                # Determine styling
+                if rep.classification == "GENUINE_HUMAN_SCREAM":
+                    border_color = "rgba(239, 68, 68, 0.45)"
+                    header_badge = ('<span class="badge badge-high" style="font-size:0.8rem;padding:4px 10px">'
+                                    '🚨 VERIFIED THREAT: HUMAN VOCAL DISTRESS</span>')
+                    verdict_icon = "⚠️"
+                elif "HORN" in rep.classification:
+                    border_color = "rgba(0, 229, 204, 0.45)"
+                    header_badge = ('<span class="badge badge-ok" style="font-size:0.8rem;padding:4px 10px">'
+                                    '🛡️ OUTLIER FILTERED: VEHICLE HORN / BUS HONK</span>')
+                    verdict_icon = "🚗"
+                elif "SCREECH" in rep.classification:
+                    border_color = "rgba(56, 189, 248, 0.45)"
+                    header_badge = ('<span class="badge badge-ok" style="font-size:0.8rem;padding:4px 10px">'
+                                    '🛡️ OUTLIER FILTERED: TIRE SCREECH / FRICTION</span>')
+                    verdict_icon = "🚙"
+                elif "SIREN" in rep.classification:
+                    border_color = "rgba(251, 146, 60, 0.45)"
+                    header_badge = ('<span class="badge badge-medium" style="font-size:0.8rem;padding:4px 10px">'
+                                    '🛡️ OUTLIER FILTERED: EMERGENCY SIREN</span>')
+                    verdict_icon = "🚨"
+                else:
+                    border_color = "rgba(52, 211, 153, 0.35)"
+                    header_badge = ('<span class="badge badge-low" style="font-size:0.8rem;padding:4px 10px">'
+                                    '✅ NORMAL AMBIENT: CLEAR</span>')
+                    verdict_icon = "🌿"
+
+                engine_badge = ("🤖 Gemini 2.5 Flash Agent" if getattr(st.session_state.forensic_engine, "client", None)
+                                else "⚡ Local Bio-Acoustic Physics Engine")
+
+                st.markdown(f"""
+                <div class="sw-card" style="margin-top:20px;border:1px solid {border_color};background:rgba(7, 21, 37, 0.75)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid rgba(0,229,204,0.12);padding-bottom:10px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="font-size:1.2rem">{verdict_icon}</span>
+                      <span style="font-weight:700;font-size:1.05rem;color:#f8fafc">AI Acoustic Forensic Dossier & Outlier Filter</span>
+                    </div>
+                    <div>
+                      {header_badge}
+                      <span style="font-size:0.68rem;color:#64748b;margin-left:8px;background:rgba(255,255,255,0.05);padding:3px 8px;border-radius:6px">{engine_badge}</span>
+                    </div>
+                  </div>
+                  
+                  <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 16px;margin-bottom:14px;border-left:3px solid {border_color}">
+                    <div style="font-size:0.75rem;font-weight:700;color:#cbd5e1;margin-bottom:4px">FORENSIC RATIONALE (Acoustic Physics & Non-Linear Dynamics)</div>
+                    <div style="font-size:0.84rem;color:#e2e8f0;line-height:1.5">{rep.forensic_rationale}</div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                    <div style="background:rgba(0,229,204,0.04);border:1px solid rgba(0,229,204,0.1);border-radius:8px;padding:10px;text-align:center">
+                      <div style="font-size:0.68rem;color:#64748b">FUNDAMENTAL F0</div>
+                      <div style="font-size:1.05rem;font-weight:700;color:#00e5cc;font-family:'JetBrains Mono'">{fp.get('f0_mean_hz', 0)} Hz</div>
+                      <div style="font-size:0.62rem;color:#475569">Pitch Baseline</div>
+                    </div>
+                    <div style="background:rgba(0,229,204,0.04);border:1px solid rgba(0,229,204,0.1);border-radius:8px;padding:10px;text-align:center">
+                      <div style="font-size:0.68rem;color:#64748b">PITCH MOD (JITTER)</div>
+                      <div style="font-size:1.05rem;font-weight:700;color:{'#ef4444' if fp.get('f0_modulation_pct',0)>8 else '#34d399'};font-family:'JetBrains Mono'">{fp.get('f0_modulation_pct', 0)}%</div>
+                      <div style="font-size:0.62rem;color:#475569">{'>8% = Vocal Chaos' if fp.get('f0_modulation_pct',0)>8 else '<7% = Stationary Tone'}</div>
+                    </div>
+                    <div style="background:rgba(0,229,204,0.04);border:1px solid rgba(0,229,204,0.1);border-radius:8px;padding:10px;text-align:center">
+                      <div style="font-size:0.68rem;color:#64748b">HARMONIC/NOISE (HNR)</div>
+                      <div style="font-size:1.05rem;font-weight:700;color:{'#34d399' if fp.get('hnr_db',0)>=18 else '#fb923c'};font-family:'JetBrains Mono'">{fp.get('hnr_db', 0)} dB</div>
+                      <div style="font-size:0.62rem;color:#475569">{'>18dB = Machine Horn' if fp.get('hnr_db',0)>=18 else '<10dB = Vocal Turbulence'}</div>
+                    </div>
+                    <div style="background:rgba(0,229,204,0.04);border:1px solid rgba(0,229,204,0.1);border-radius:8px;padding:10px;text-align:center">
+                      <div style="font-size:0.68rem;color:#64748b">CHAOS INDEX</div>
+                      <div style="font-size:1.05rem;font-weight:700;color:{'#ef4444' if fp.get('chaos_index',0)>=0.3 else '#00e5cc'};font-family:'JetBrains Mono'">{fp.get('chaos_index', 0)}</div>
+                      <div style="font-size:0.62rem;color:#475569">Vocal Bifurcation Metric</div>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
 
             # ── Incident Response Actions
             st.markdown('<div class="sw-section" style="margin-top:20px">🚔 Incident Response Actions</div>', unsafe_allow_html=True)
