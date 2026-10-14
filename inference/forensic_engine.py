@@ -96,31 +96,36 @@ class AcousticForensicEngine:
         end_idx   = min(len(y), start_idx + int(1.5 * sr))
         y_seg     = y[start_idx:end_idx]
 
-        # 1. Fast Fundamental Frequency (F0) estimation via downsampled autocorrelation
+        # 1. Fundamental Frequency (F0) & Voicing Periodicity Estimation
         try:
-            # Downsample segment by 2x for ultra-fast autocorrelation
+            # Downsample segment by 2x for fast autocorrelation
             y_sub = librosa.resample(y_seg, orig_sr=sr, target_sr=sr // 2)
             sr_sub = sr // 2
             autocorr = np.correlate(y_sub, y_sub, mode='full')[len(y_sub)-1:]
             
-            # Lag corresponding to 150 Hz to 1800 Hz
-            min_lag = int(sr_sub / 1800)
-            max_lag = int(sr_sub / 150)
+            # Lag corresponding to 200 Hz to 2200 Hz
+            min_lag = int(sr_sub / 2200)
+            max_lag = int(sr_sub / 200)
             
             if len(autocorr) > max_lag:
-                peak_lag = min_lag + np.argmax(autocorr[min_lag:max_lag])
-                f0_est = float(sr_sub / max(1, peak_lag))
+                peak_rel = min_lag + int(np.argmax(autocorr[min_lag:max_lag]))
+                norm_peak = float(autocorr[peak_rel] / (autocorr[0] + 1e-9))
+                f0_est = float(sr_sub / max(1, peak_rel))
             else:
-                f0_est = 450.0
+                norm_peak = 0.1
+                f0_est = 400.0
 
             # Pitch variation / jitter estimate via zero-crossing rate variance
             zcr = librosa.feature.zero_crossing_rate(y_seg, hop_length=256)[0]
             f0_mod = float(np.std(zcr) / (np.mean(zcr) + 1e-6) * 40.0)
         except Exception:
-            f0_est = 450.0
+            norm_peak = 0.1
+            f0_est = 400.0
             f0_mod = 10.0
 
-        # 2. Fast Harmonicity & Spectral Metrics
+        is_voiced = norm_peak >= 0.38
+
+        # 2. Fast Harmonicity, Formant Energy & Spectral Metrics
         cent = float(np.mean(librosa.feature.spectral_centroid(y=y_seg, sr=sr)))
         flat = float(np.mean(librosa.feature.spectral_flatness(y=y_seg)))
         
@@ -137,16 +142,26 @@ class AcousticForensicEngine:
         except Exception:
             hnr_est = float(np.clip(-10.0 * np.log10(max(1e-4, flat)), 2.0, 30.0))
 
+        # Scream Formant Frequency Energy Ratio (1.5 kHz - 4.5 kHz distress band)
+        try:
+            S = np.abs(librosa.stft(y_seg, n_fft=1024, hop_length=512))
+            freqs = librosa.fft_frequencies(sr=sr, n_fft=1024)
+            scream_energy = float(np.sum(S[(freqs >= 1400) & (freqs <= 4500), :]))
+            low_energy = float(np.sum(S[freqs < 1000, :])) + 1e-9
+            scream_band_ratio = float(scream_energy / low_energy)
+        except Exception:
+            scream_band_ratio = 0.5
+
         # 3. Chaos & Vocal Fold Turbulence Index
         chaos_index = float(np.clip((f0_mod / 25.0) * (rms_stationarity * 1.5) * (1.0 if hnr_est < 12.0 else 0.2), 0.0, 1.0))
 
-        # Acoustic pre-classification
-        is_harmonic = (hnr_est >= 18.0 and f0_mod < 7.0 and rms_stationarity < 0.35)
-        if is_harmonic or (hnr_est >= 22.0 and f0_mod < 8.0):
+        # Robust Acoustic pre-classification
+        is_horn = (hnr_est >= 18.0 and f0_mod < 7.0 and rms_stationarity < 0.35) or (hnr_est >= 20.0 and scream_band_ratio < 0.2)
+        if is_horn:
             candidate = "VEHICLE_HORN_OR_SIREN"
         elif flat > 0.18:
             candidate = "FRICTION_TIRE_SCREECH"
-        elif cnn_prob_hint := (cent >= 1400.0 or f0_mod >= 9.0 or chaos_index >= 0.30):
+        elif is_voiced and (f0_est >= 650.0 or (f0_est >= 500.0 and scream_band_ratio >= 0.70)) and hnr_est < 14.0:
             candidate = "HUMAN_VOCAL_DISTRESS"
         else:
             candidate = "AMBIENT_NOISE"
@@ -160,7 +175,7 @@ class AcousticForensicEngine:
             spectral_flatness=round(flat, 4),
             chaos_index=round(chaos_index, 2),
             candidate_source=candidate,
-            is_harmonic=bool(is_harmonic),
+            is_harmonic=bool(is_horn),
         )
 
     def analyze(
@@ -189,17 +204,21 @@ class AcousticForensicEngine:
 
         fp = self.extract_bioacoustics(y, sr)
 
-        # ── Fast check: if CNN probability is low (<0.35) and no loud anomalous harmonics, it's normal ambient
-        if cnn_prob < 0.35 and not fp.is_harmonic and fp.candidate_source == "AMBIENT_NOISE":
+        # ── Ground Truth Physics Arbiter
+        # Real-world physical acoustics: if the acoustic signature is unvoiced ambient,
+        # vehicle horn, or friction, dismiss immediately without relying on external API calls.
+        if fp.candidate_source in ("AMBIENT_NOISE", "VEHICLE_HORN_OR_SIREN", "FRICTION_TIRE_SCREECH"):
             return self._local_expert_reasoning(fp, cnn_prob, location)
 
-        # ── Try Gemini Context-Aware Agentic Verification if client is active
+        # ── For Genuine Human Vocal Distress, query Gemini for operator dossier if available
         if self.client:
-            report = self._call_gemini(fp, cnn_prob, location)
-            if report:
-                return report
+            try:
+                report = self._call_gemini(fp, cnn_prob, location)
+                if report and report.is_crime_threat:
+                    return report
+            except Exception:
+                pass
 
-        # ── Fast Local Bio-Acoustic Expert System (100% offline fallback)
         return self._local_expert_reasoning(fp, cnn_prob, location)
 
     def _call_gemini(self, fp: BioacousticFingerprint, cnn_prob: float, location: str) -> ForensicReport | None:
@@ -222,10 +241,10 @@ Acoustic Physics & Bio-Acoustic Fingerprint:
 - Candidate Pre-classification: {fp.candidate_source}
 
 FORENSIC DECISION CRITERIA:
-1. VEHICLE HORN / BUS HONK: If HNR is high (>= 18 dB), pitch modulation is low (< 7%), and tone is stationary, this is an ELECTROMECHANICAL VEHICLE HORN / BUS HONK outlier, NOT a human scream! Even if the CNN gave a high score due to high amplitude, you MUST filter it out as an outlier: classification="VEHICLE_HORN", is_crime_threat=false, outlier_category="HORN_OUTLIER", recommended_action="DISMISS_FALSE_ALARM".
-2. TIRE SCREECH / FRICTION: High spectral flatness (>0.15) with no vocal formants: classification="TIRE_SCREECH", is_crime_threat=false, outlier_category="SCREECH_OUTLIER", recommended_action="DISMISS_FALSE_ALARM".
-3. GENUINE HUMAN DISTRESS SCREAM: High CNN probability (>= 0.50), high spectral centroid (>1400 Hz), low HNR (<12 dB), and chaotic pitch modulation (>8%): classification="GENUINE_HUMAN_SCREAM", is_crime_threat=true, outlier_category="VOICE_DISTRESS", recommended_action="DISPATCH_PATROL".
-4. ENVIRONMENTAL AMBIENT: Low CNN probability (<0.35) and low threat: classification="ENVIRONMENTAL_AMBIENT", is_crime_threat=false, outlier_category="CLEAR", recommended_action="MONITOR_ZONE".
+1. VEHICLE HORN / BUS HONK: If candidate_source is "VEHICLE_HORN_OR_SIREN" or HNR >= 18 dB with low pitch modulation (< 7%), this is an ELECTROMECHANICAL VEHICLE HORN / BUS HONK outlier, NOT a human scream! classification="VEHICLE_HORN", is_crime_threat=false, outlier_category="HORN_OUTLIER", recommended_action="DISMISS_FALSE_ALARM".
+2. TIRE SCREECH / FRICTION: High spectral flatness (>0.15) or candidate_source="FRICTION_TIRE_SCREECH": classification="TIRE_SCREECH", is_crime_threat=false, outlier_category="SCREECH_OUTLIER", recommended_action="DISMISS_FALSE_ALARM".
+3. AMBIENT BACKGROUND NOISE: If candidate_source is "AMBIENT_NOISE" or F0 < 600 Hz: this is environmental ambient street activity / crowd noise / footfalls, NOT a scream! classification="ENVIRONMENTAL_AMBIENT", is_crime_threat=false, outlier_category="CLEAR", recommended_action="MONITOR_ZONE".
+4. GENUINE HUMAN DISTRESS SCREAM: Only if candidate_source is "HUMAN_VOCAL_DISTRESS" with high F0 (>= 650 Hz), low HNR (<12 dB), and chaotic pitch modulation (>8%): classification="GENUINE_HUMAN_SCREAM", is_crime_threat=true, outlier_category="VOICE_DISTRESS", recommended_action="DISPATCH_PATROL".
 
 Return your forensic analysis STRICTLY as valid JSON matching this schema:
 {{
@@ -268,12 +287,27 @@ Return your forensic analysis STRICTLY as valid JSON matching this schema:
         Deterministic bio-acoustic expert rules replicating acoustic physics.
         Guarantees zero crashes when offline or when no Gemini API key is configured.
         """
-        # Case 1: Vehicle Horn / Bus Honk Detection
-        if (fp.hnr_db >= 18.0 and fp.f0_modulation_pct <= 7.0) or fp.candidate_source == "VEHICLE_HORN_OR_SIREN":
+        # Case 1: Ambient / Environmental Noise
+        if fp.candidate_source == "AMBIENT_NOISE":
+            return ForensicReport(
+                classification="ENVIRONMENTAL_AMBIENT",
+                is_crime_threat=False,
+                threat_confidence=0.03,
+                outlier_category="CLEAR",
+                forensic_rationale=(
+                    f"Acoustic profile is unvoiced/ambient (F0: {fp.f0_mean_hz} Hz, HNR: {fp.hnr_db} dB). "
+                    f"No vocal tract formants or chaotic scream bursts detected. Ambient baseline normal."
+                ),
+                recommended_action="MONITOR_ZONE",
+                fingerprint=asdict(fp),
+            )
+
+        # Case 2: Vehicle Horn / Bus Honk Detection
+        if fp.candidate_source == "VEHICLE_HORN_OR_SIREN" or (fp.hnr_db >= 18.0 and fp.f0_modulation_pct <= 7.0):
             return ForensicReport(
                 classification="VEHICLE_HORN",
                 is_crime_threat=False,
-                threat_confidence=round(max(0.04, 1.0 - cnn_prob), 4),
+                threat_confidence=0.02,
                 outlier_category="HORN_OUTLIER",
                 forensic_rationale=(
                     f"Acoustic profile demonstrates electromechanical harmonic stationarity: "
@@ -284,12 +318,12 @@ Return your forensic analysis STRICTLY as valid JSON matching this schema:
                 fingerprint=asdict(fp),
             )
 
-        # Case 2: Tire Screech / High Friction Noise
-        if fp.spectral_flatness > 0.18 or fp.candidate_source == "FRICTION_TIRE_SCREECH":
+        # Case 3: Tire Screech / High Friction Noise
+        if fp.candidate_source == "FRICTION_TIRE_SCREECH" or fp.spectral_flatness > 0.18:
             return ForensicReport(
                 classification="TIRE_SCREECH",
                 is_crime_threat=False,
-                threat_confidence=0.12,
+                threat_confidence=0.03,
                 outlier_category="SCREECH_OUTLIER",
                 forensic_rationale=(
                     f"Acoustic energy displays high spectral flatness ({fp.spectral_flatness:.3f}) "
@@ -299,9 +333,9 @@ Return your forensic analysis STRICTLY as valid JSON matching this schema:
                 fingerprint=asdict(fp),
             )
 
-        # Case 3: Genuine Human Distress Scream
-        if cnn_prob >= 0.50 or fp.chaos_index > 0.35 or fp.candidate_source == "HUMAN_VOCAL_DISTRESS":
-            conf = round(float(np.clip(0.6 * cnn_prob + 0.4 * (fp.chaos_index + 0.35), 0.58, 0.99)), 4)
+        # Case 4: Genuine Human Distress Scream
+        if fp.candidate_source == "HUMAN_VOCAL_DISTRESS" or cnn_prob >= 0.50:
+            conf = round(float(np.clip(0.6 * cnn_prob + 0.4 * (fp.chaos_index + 0.35), 0.70, 0.99)), 4)
             return ForensicReport(
                 classification="GENUINE_HUMAN_SCREAM",
                 is_crime_threat=True,
@@ -309,18 +343,18 @@ Return your forensic analysis STRICTLY as valid JSON matching this schema:
                 outlier_category="VOICE_DISTRESS",
                 forensic_rationale=(
                     f"Bio-acoustic signature exhibits turbulent non-linear vocal fold chaos "
-                    f"(Chaos Index: {fp.chaos_index}, F0 modulation: {fp.f0_modulation_pct}%). "
+                    f"(F0: {fp.f0_mean_hz} Hz, Chaos Index: {fp.chaos_index}, F0 modulation: {fp.f0_modulation_pct}%). "
                     f"Turbulence and low harmonic stability confirm biological vocal distress."
                 ),
                 recommended_action="DISPATCH_PATROL",
                 fingerprint=asdict(fp),
             )
 
-        # Case 4: Normal Ambient
+        # Case 5: Normal Ambient Fallback
         return ForensicReport(
             classification="ENVIRONMENTAL_AMBIENT",
             is_crime_threat=False,
-            threat_confidence=round(cnn_prob, 4),
+            threat_confidence=0.02,
             outlier_category="CLEAR",
             forensic_rationale="Acoustic levels remain within baseline normal ambient energy envelopes.",
             recommended_action="MONITOR_ZONE",

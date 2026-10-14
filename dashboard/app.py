@@ -251,10 +251,10 @@ HOP_SEC        = 0.5
 # SESSION STATE
 # ──────────────────────────────────────────────────────────────────────────────
 _avail_model = "cnn"
-if (CHECKPOINT_DIR / "cnn_lstm_best.pth").exists():
-    _avail_model = "cnn_lstm"
-elif (CHECKPOINT_DIR / "cnn_best.pth").exists():
+if (CHECKPOINT_DIR / "cnn_best.pth").exists():
     _avail_model = "cnn"
+elif (CHECKPOINT_DIR / "cnn_lstm_best.pth").exists():
+    _avail_model = "cnn_lstm"
 
 _defaults = dict(
     predictor       = None,
@@ -263,7 +263,7 @@ _defaults = dict(
     results         = [],
     alert_logger    = None,
     model_type      = _avail_model,
-    threshold       = 0.50,
+    threshold       = 0.55,
     consec          = 2,
     location        = "Node 01 — North Alleyway CCTV-04",
     dispatch_msg    = None,
@@ -670,12 +670,28 @@ with tab_detect:
 
         if st.session_state.results:
             results   = st.session_state.results
-            n_alerts  = sum(1 for r in results if r.is_alert)
-            max_prob  = max((r.scream_prob for r in results), default=0.0)
+            raw_alerts = sum(1 for r in results if r.is_alert)
+            raw_max   = max((r.scream_prob for r in results), default=0.0)
             dur_s     = results[-1].timestamp_sec if results else 0
+            rep       = st.session_state.get("forensic_report")
+
+            # ── Real-World Gated Threat Verification Pipeline
+            # Raw deep learning window predictions are arbitrated by the Bio-Acoustic Physics & LLM Forensic Layer
+            if rep is not None:
+                is_confirmed_threat = rep.is_crime_threat
+                if is_confirmed_threat:
+                    n_alerts = max(1, raw_alerts)
+                    display_prob = max(raw_max, rep.threat_confidence)
+                else:
+                    n_alerts = 0
+                    display_prob = min(0.04, rep.threat_confidence)
+            else:
+                is_confirmed_threat = (raw_alerts > 0 and raw_max >= st.session_state.threshold)
+                n_alerts = raw_alerts
+                display_prob = raw_max
 
             # ── Banner
-            if n_alerts > 0:
+            if is_confirmed_threat:
                 st.markdown(f"""
                 <div class="sw-alert-banner">
                   <span class="dot-alert"></span>
@@ -683,18 +699,46 @@ with tab_detect:
                     ⚠️ {n_alerts} VIOLENT CRIME / DISTRESS ALERT(S) CONFIRMED
                   </span>
                   <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
-                    Peak Threat Probability: {max_prob:.1%} · Duration: {dur_s:.1f}s ·
+                    Peak Threat Probability: {display_prob:.1%} · Duration: {dur_s:.1f}s ·
                     Location: {st.session_state.location} · Immediate Security Verification Required.
+                  </div>
+                </div>""", unsafe_allow_html=True)
+            elif rep is not None and "HORN" in rep.classification:
+                st.markdown(f"""
+                <div style="background:rgba(0,229,204,.08);border:1px solid rgba(0,229,204,.3);
+                     border-radius:12px;padding:14px 18px;margin-bottom:16px">
+                  <span style="color:#00e5cc;font-weight:700">🛡️ False Alarm Prevented — Vehicle Horn Disambiguated</span>
+                  <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
+                    Electromechanical stationary harmonics detected (HNR: {rep.fingerprint.get('hnr_db', 25)} dB, Jitter: {rep.fingerprint.get('f0_modulation_pct', 4)}%).
+                    Threat dismissed by AI Outlier Filter.
+                  </div>
+                </div>""", unsafe_allow_html=True)
+            elif rep is not None and "SCREECH" in rep.classification:
+                st.markdown(f"""
+                <div style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);
+                     border-radius:12px;padding:14px 18px;margin-bottom:16px">
+                  <span style="color:#38bdf8;font-weight:700">🛡️ Outlier Filtered — Mechanical Friction / Tire Screech</span>
+                  <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
+                    High spectral flatness friction dispersion without biological formants. Threat dismissed.
+                  </div>
+                </div>""", unsafe_allow_html=True)
+            elif rep is not None and "SIREN" in rep.classification:
+                st.markdown(f"""
+                <div style="background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.3);
+                     border-radius:12px;padding:14px 18px;margin-bottom:16px">
+                  <span style="color:#fb923c;font-weight:700">🛡️ Outlier Filtered — Emergency Vehicle Siren</span>
+                  <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
+                    Sinusoidal frequency modulation detected without vocal fold chaos. Threat dismissed.
                   </div>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);
                      border-radius:12px;padding:14px 18px;margin-bottom:16px">
-                  <span style="color:#34d399;font-weight:700">✅ Zone Secure — No Criminal Distress Detected</span>
-                  <span style="color:#64748b;font-size:.82rem;margin-left:10px">
-                    {len(results)} windows analyzed · Max P(threat) = {max_prob:.3f}
-                  </span>
+                  <span style="color:#34d399;font-weight:700">✅ Zone Secure — Baseline Ambient Environment</span>
+                  <div style="color:#64748b;font-size:.82rem;margin-left:10px">
+                    {len(results)} windows analyzed · Acoustic energy within normal environmental baseline.
+                  </div>
                 </div>""", unsafe_allow_html=True)
 
             # ── Summary cards
@@ -702,8 +746,8 @@ with tab_detect:
             for col, (label, val, color, icon) in zip(
                 [c1, c2, c3, c4], [
                     ("Acoustic Windows", len(results),      "#e2e8f0", "📦"),
-                    ("Crime Alerts",     n_alerts,           "#ef4444", "🚨"),
-                    ("Peak P(distress)", f"{max_prob:.3f}",  "#fb923c", "📊"),
+                    ("Crime Alerts",     n_alerts,           "#ef4444" if is_confirmed_threat else "#34d399", "🚨" if is_confirmed_threat else "🛡️"),
+                    ("Peak P(distress)", f"{display_prob:.3f}",  "#fb923c" if is_confirmed_threat else "#34d399", "📊"),
                     ("Duration",         f"{dur_s:.1f}s",    "#00e5cc", "⏱️"),
                 ]
             ):
@@ -830,15 +874,23 @@ with tab_detect:
     with col_gauge:
         st.markdown('<div class="sw-section">🌡️ Threat Level</div>', unsafe_allow_html=True)
         res = st.session_state.results
-        peak = max((r.scream_prob for r in res), default=0.0)
-        st.plotly_chart(make_gauge(peak), use_container_width=True)
+        rep = st.session_state.get("forensic_report")
+        if rep is not None:
+            if rep.is_crime_threat:
+                gauge_val = max((r.scream_prob for r in res), default=rep.threat_confidence)
+            else:
+                gauge_val = min(0.04, rep.threat_confidence)
+        else:
+            gauge_val = max((r.scream_prob for r in res), default=0.0)
+
+        st.plotly_chart(make_gauge(gauge_val), use_container_width=True)
 
         # Status pill
-        if peak >= 0.75:
+        if gauge_val >= 0.70:
             pill_c, pill_t = "#ef4444", "CRITICAL"
-        elif peak >= 0.50:
+        elif gauge_val >= 0.45:
             pill_c, pill_t = "#fb923c", "WARNING"
-        elif peak > 0:
+        elif gauge_val > 0:
             pill_c, pill_t = "#34d399", "CLEAR"
         else:
             pill_c, pill_t = "#334155", "IDLE"

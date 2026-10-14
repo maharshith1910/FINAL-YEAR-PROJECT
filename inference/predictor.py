@@ -172,9 +172,22 @@ class ScreamPredictor:
 
         return prob
 
-    def process_window(self, mel: np.ndarray, timestamp_sec: float) -> WindowResult:
+    def process_window(self, mel: np.ndarray, timestamp_sec: float, raw_window: Optional[np.ndarray] = None) -> WindowResult:
         """Score a window and decide whether to fire an alert."""
         prob      = self.predict_window(mel)
+
+        # ── Real-World Acoustic Pre-Gating & Transient Detection
+        # In real-world urban surveillance, distress screams are high-intensity vocal bursts.
+        # Ambient noise (distant traffic, footfalls, quiet alleyway air) lacks acoustic transient attack.
+        if raw_window is not None:
+            rms   = float(np.sqrt(np.mean(raw_window ** 2)))
+            peak  = float(np.max(np.abs(raw_window)))
+            crest = peak / (rms + 1e-6)
+
+            # If ambient energy is very low or completely flat (no vocal burst dynamics):
+            if rms < 0.02 or crest < 2.2:
+                prob = prob * 0.15   # Suppress ambient background probability
+
         is_pos    = prob >= self.threshold
 
         if is_pos:
@@ -210,16 +223,25 @@ class ScreamPredictor:
     def process_file(self, filepath: str) -> list[WindowResult]:
         """Slice a .wav file into windows and score each one."""
         y, _ = librosa.load(filepath, sr=SAMPLE_RATE, mono=True)
+
+        # 1. 150 Hz Butterworth high-pass filter: eliminates low-frequency HVAC hum and mechanical traffic rumble
+        try:
+            import scipy.signal
+            b, a = scipy.signal.butter(2, 150.0 / (SAMPLE_RATE / 2.0), btype='high')
+            y_clean = scipy.signal.lfilter(b, a, y)
+        except Exception:
+            y_clean = y
+
         results  = []
         win_len  = int(WINDOW_SEC  * SAMPLE_RATE)
         hop_len  = int(HOP_SEC     * SAMPLE_RATE)
         start    = 0
 
-        while start + win_len <= len(y):
-            window     = y[start : start + win_len]
+        while start + win_len <= len(y_clean):
+            window     = y_clean[start : start + win_len]
             mel        = extract_mel(window)
             ts         = start / SAMPLE_RATE
-            result     = self.process_window(mel, ts)
+            result     = self.process_window(mel, ts, raw_window=window)
             results.append(result)
             start     += hop_len
 
