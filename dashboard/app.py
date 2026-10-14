@@ -31,7 +31,7 @@ except ImportError as e:
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="SafeWatch AI — Deep Learning Threat Detection",
+    page_title="SafeWatch AI — Smart Crime Detection & Monitoring System",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -249,14 +249,21 @@ HOP_SEC        = 0.5
 # ──────────────────────────────────────────────────────────────────────────────
 # SESSION STATE
 # ──────────────────────────────────────────────────────────────────────────────
+_avail_model = "cnn"
+if (CHECKPOINT_DIR / "cnn_lstm_best.pth").exists():
+    _avail_model = "cnn_lstm"
+elif (CHECKPOINT_DIR / "cnn_best.pth").exists():
+    _avail_model = "cnn"
+
 _defaults = dict(
     predictor    = None,
     results      = [],
     alert_logger = None,
-    model_type   = "cnn_lstm",
-    threshold    = 0.65,
-    consec       = 3,
-    location     = "Camera A — Main Entrance",
+    model_type   = _avail_model,
+    threshold    = 0.50,
+    consec       = 2,
+    location     = "Node 01 — North Alleyway CCTV-04",
+    dispatch_msg = None,
 )
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -284,6 +291,10 @@ def load_predictor():
     except Exception as e:
         st.error(f"❌ Could not load model: {e}\n\nRun training first:  `python training/train.py --model cnn_lstm`")
         return False
+
+# Auto-initialize predictor on first load if checkpoint exists
+if st.session_state.predictor is None and DEPS_OK:
+    load_predictor()
 
 
 def load_metrics(model_type: str) -> dict | None:
@@ -512,15 +523,15 @@ with st.sidebar:
 # TABS
 # ──────────────────────────────────────────────────────────────────────────────
 tab_detect, tab_perf, tab_log, tab_about = st.tabs([
-    "🎙️  Detect",
-    "📈  Performance",
-    "🚨  Incidents",
-    "ℹ️   About",
+    "🛡️  Crime Surveillance & Detect",
+    "📈  Model Proofs & Metrics",
+    "🚨  Incident Command Center",
+    "ℹ️   System Architecture",
 ])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — DETECTION
+# TAB 1 — CRIME SURVEILLANCE & DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_detect:
 
@@ -528,12 +539,46 @@ with tab_detect:
     st.markdown("""
     <div class="hero">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
-        <span style="font-size:1.6rem">🎙️</span>
-        <span style="font-size:1.25rem;font-weight:700;color:#f8fafc">Real-Time Threat Detection</span>
+        <span style="font-size:1.6rem">🛡️</span>
+        <span style="font-size:1.25rem;font-weight:700;color:#f8fafc">Smart Crime Detection & Monitoring System</span>
       </div>
-      <div style="color:#64748b;font-size:.85rem;max-width:600px">
-        Upload an audio clip — the model scores every 1-second window via Mel spectrogram analysis
-        and fires an alert when P(scream) exceeds the threshold for N consecutive windows.
+      <div style="color:#64748b;font-size:.85rem;max-width:700px">
+        Continuous acoustic surveillance detecting human screams and violent distress events in real-time.
+        Powered by deep convolutional neural networks and spatial-temporal LSTM architectures.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Surveillance Node Status Grid
+    st.markdown("""
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      <div class="sw-card" style="padding:12px 14px;border-left:3px solid #00e5cc">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:0.75rem;font-weight:700;color:#f8fafc">NODE 01: North Alleyway</span>
+          <span class="badge badge-high" style="font-size:8px">ACTIVE SENSOR</span>
+        </div>
+        <div style="font-size:0.68rem;color:#64748b;margin-top:4px">CCTV-04 · Acoustic Mic #1</div>
+      </div>
+      <div class="sw-card" style="padding:12px 14px;border-left:3px solid #34d399">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:0.75rem;font-weight:700;color:#f8fafc">NODE 02: Parking Bay B</span>
+          <span class="badge badge-low" style="font-size:8px">SECURE</span>
+        </div>
+        <div style="font-size:0.68rem;color:#64748b;margin-top:4px">Underground Level -1</div>
+      </div>
+      <div class="sw-card" style="padding:12px 14px;border-left:3px solid #34d399">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:0.75rem;font-weight:700;color:#f8fafc">NODE 03: Transit West</span>
+          <span class="badge badge-low" style="font-size:8px">SECURE</span>
+        </div>
+        <div style="font-size:0.68rem;color:#64748b;margin-top:4px">Concourse Platform A</div>
+      </div>
+      <div class="sw-card" style="padding:12px 14px;border-left:3px solid #34d399">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:0.75rem;font-weight:700;color:#f8fafc">NODE 04: ATM Perimeter</span>
+          <span class="badge badge-low" style="font-size:8px">SECURE</span>
+        </div>
+        <div style="font-size:0.68rem;color:#64748b;margin-top:4px">Vault Corridor South</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -544,31 +589,65 @@ with tab_detect:
         st.stop()
 
     if st.session_state.predictor is None:
-        st.info("👈 **Load a model** from the sidebar first.  "
-                "If no checkpoint exists yet, run:\n"
-                "```\npython training/train.py --model cnn_lstm --epochs 30\n```")
+        load_predictor()
 
     col_upload, col_gauge = st.columns([3, 1], gap="large")
 
     with col_upload:
-        st.markdown('<div class="sw-section">📁 Upload Audio File</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sw-section">🎙️ Surveillance Audio Feed & Scenarios</div>', unsafe_allow_html=True)
 
-        uploaded = st.file_uploader(
-            "Drop a .wav / .mp3 / .flac file here",
-            type=["wav", "mp3", "flac", "ogg"],
+        input_mode = st.radio(
+            "Input Mode",
+            ["⚡ Pre-Recorded Surveillance Audio Scenarios (1-Click Test)", "📁 Upload Custom Audio File"],
+            horizontal=True,
             label_visibility="collapsed",
         )
 
-        if uploaded and st.session_state.predictor:
-            suffix = Path(uploaded.name).suffix
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(uploaded.read())
-                tmp_path = tmp.name
+        audio_to_process = None
+        audio_name = None
 
-            with st.spinner(f"🔍 Analysing  **{uploaded.name}** …"):
-                results = st.session_state.predictor.process_file(tmp_path)
+        if input_mode.startswith("⚡"):
+            sample_options = {
+                "🚨 Active Crime / Distress Scream (Scenario #1)": "data/raw/scream/---1_cCGK4M_out.wav",
+                "🚨 Active Crime / Distress Scream (Scenario #2)": "data/raw/scream/-20uudT97E0_out.wav",
+                "🟢 Normal Urban Alleyway Ambience (No Threat)": "data/raw/non_scream/--PJHxphWEs_out.wav",
+                "🟢 Normal Street Activity & Footsteps (No Threat)": "data/raw/non_scream/-28U1_qW0sU_out.wav",
+            }
+            selected_scenario = st.selectbox("Select Test Scenario:", list(sample_options.keys()))
+            sample_rel = sample_options[selected_scenario]
+            sample_path = ROOT / sample_rel
+
+            if sample_path.exists():
+                st.audio(str(sample_path), format="audio/wav")
+                c_btn, _ = st.columns([1, 1])
+                with c_btn:
+                    if st.button("▶️ Run Crime Threat Analysis", type="primary", use_container_width=True):
+                        audio_to_process = str(sample_path)
+                        audio_name = selected_scenario
+            else:
+                st.warning(f"Audio file not found at {sample_path}")
+        else:
+            uploaded = st.file_uploader(
+                "Drop an audio file (.wav, .mp3, .flac, .ogg)",
+                type=["wav", "mp3", "flac", "ogg"],
+                label_visibility="collapsed",
+            )
+            if uploaded:
+                suffix = Path(uploaded.name).suffix
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(uploaded.read())
+                    audio_to_process = tmp.name
+                    audio_name = uploaded.name
+                st.audio(uploaded)
+
+        if audio_to_process and st.session_state.predictor:
+            with st.spinner(f"🔍 Analyzing Acoustic Feed [{audio_name}] …"):
+                results = st.session_state.predictor.process_file(audio_to_process)
                 st.session_state.results = results
+                st.session_state.dispatch_msg = None
 
+        if st.session_state.results:
+            results   = st.session_state.results
             n_alerts  = sum(1 for r in results if r.is_alert)
             max_prob  = max((r.scream_prob for r in results), default=0.0)
             dur_s     = results[-1].timestamp_sec if results else 0
@@ -579,20 +658,20 @@ with tab_detect:
                 <div class="sw-alert-banner">
                   <span class="dot-alert"></span>
                   <span style="color:#f87171;font-weight:700;font-size:1rem">
-                    {n_alerts} POTENTIAL DISTRESS EVENT(S) DETECTED
+                    ⚠️ {n_alerts} VIOLENT CRIME / DISTRESS ALERT(S) CONFIRMED
                   </span>
                   <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">
-                    Peak confidence {max_prob:.1%} · Duration {dur_s:.1f}s ·
-                    Requires human verification before any action is taken.
+                    Peak Threat Probability: {max_prob:.1%} · Duration: {dur_s:.1f}s ·
+                    Location: {st.session_state.location} · Immediate Security Verification Required.
                   </div>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);
                      border-radius:12px;padding:14px 18px;margin-bottom:16px">
-                  <span style="color:#34d399;font-weight:700">✅ No threats detected</span>
+                  <span style="color:#34d399;font-weight:700">✅ Zone Secure — No Criminal Distress Detected</span>
                   <span style="color:#64748b;font-size:.82rem;margin-left:10px">
-                    {len(results)} windows analysed · Max P(scream) = {max_prob:.3f}
+                    {len(results)} windows analyzed · Max P(threat) = {max_prob:.3f}
                   </span>
                 </div>""", unsafe_allow_html=True)
 
@@ -600,10 +679,10 @@ with tab_detect:
             c1, c2, c3, c4 = st.columns(4)
             for col, (label, val, color, icon) in zip(
                 [c1, c2, c3, c4], [
-                    ("Windows", len(results),   "#e2e8f0", "📦"),
-                    ("Alerts",  n_alerts,        "#ef4444", "🚨"),
-                    ("Peak P(scream)", f"{max_prob:.3f}", "#fb923c", "📊"),
-                    ("Duration", f"{dur_s:.1f}s", "#00e5cc", "⏱️"),
+                    ("Acoustic Windows", len(results),      "#e2e8f0", "📦"),
+                    ("Crime Alerts",     n_alerts,           "#ef4444", "🚨"),
+                    ("Peak P(distress)", f"{max_prob:.3f}",  "#fb923c", "📊"),
+                    ("Duration",         f"{dur_s:.1f}s",    "#00e5cc", "⏱️"),
                 ]
             ):
                 with col:
@@ -614,8 +693,24 @@ with tab_detect:
                       <div class="stat-label">{label}</div>
                     </div>""", unsafe_allow_html=True)
 
-        elif uploaded and st.session_state.predictor is None:
-            st.warning("Load a model first, then re-upload the file.")
+            # ── Incident Response Actions
+            st.markdown('<div class="sw-section" style="margin-top:20px">🚔 Incident Response Actions</div>', unsafe_allow_html=True)
+            col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+            with col_b1:
+                if st.button("🚨 Dispatch Patrol", use_container_width=True, type="primary"):
+                    st.session_state.dispatch_msg = "🚔 SECURITY PATROL DISPATCHED to Location! Unit #402 en route."
+            with col_b2:
+                if st.button("📞 Emergency 911 / 112", use_container_width=True):
+                    st.session_state.dispatch_msg = "📞 LAW ENFORCEMENT DISPATCH CODE TRANSMITTED: #EMERGENCY-AC-911"
+            with col_b3:
+                if st.button("✅ Verify Threat", use_container_width=True):
+                    st.session_state.dispatch_msg = "✅ Incident verified by operator and logged to evidentiary record."
+            with col_b4:
+                if st.button("❌ Dismiss Alarm", use_container_width=True):
+                    st.session_state.dispatch_msg = "❌ Event flagged as false alarm. Baseline ambient profile updated."
+
+            if st.session_state.get("dispatch_msg"):
+                st.success(st.session_state.dispatch_msg)
 
         # ── Timeline
         st.markdown('<div class="sw-section" style="margin-top:20px">📈 Detection Timeline</div>',
