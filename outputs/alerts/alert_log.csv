@@ -7,3 +7,56 @@ F0A80571,2026-10-14T11:26:33.547626+00:00,1.5,Test Lab,0.5073,LOW,cnn,PENDING,Po
 34AF9CCB,2026-10-14T11:54:37.628806+00:00,1.0,Unknown Location,0.5073,LOW,cnn,PENDING,Potential distress event - requires human verification.
 3E31044E,2026-10-14T11:57:20.686274+00:00,0.5,Test Lab,0.5,LOW,cnn,PENDING,Potential distress event - requires human verification.
 7BCC9CFB,2026-10-14T11:57:20.733455+00:00,1.5,Test Lab,0.5073,LOW,cnn,PENDING,Potential distress event - requires human verification.
+E25962E7,2026-10-14T12:00:47.711519+00:00,2.5,Node 01 — North Alleyway CCTV-04,0.5087,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+1B478B7B,2026-10-14T12:00:47.848143+00:00,3.5,Node 01 — North Alleyway CCTV-04,0.5076,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+DBC6A573,2026-10-14T12:00:47.978584+00:00,4.5,Node 01 — North Alleyway CCTV-04,0.5044,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+E56FC358,2026-10-14T12:00:48.112197+00:00,5.5,Node 01 — North Alleyway CCTV-04,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+955900DB,2026-10-14T12:00:48.223581+00:00,6.5,Node 01 — North Alleyway CCTV-04,0.5032,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+FBD61909,2026-10-14T12:00:48.329597+00:00,7.5,Node 01 — North Alleyway CCTV-04,0.5021,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+F84752C8,2026-10-14T12:00:48.427440+00:00,8.5,Node 01 — North Alleyway CCTV-04,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+F572C567,2026-10-14T12:31:35.955248+00:00,0.5,Test Lab,0.5,LOW,cnn,PENDING,Potential distress event - requires human verification.
+CEC5513B,2026-10-14T12:31:36.006511+00:00,1.5,Test Lab,0.5073,LOW,cnn,PENDING,Potential distress event - requires human verification.
+7F6FEBD1,2026-10-14T12:36:39.139448+00:00,2.5,Node 01 — North Alleyway CCTV-04,0.5087,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+0A648DAA,2026-10-14T12:36:39.271076+00:00,3.5,Node 01 — North Alleyway CCTV-04,0.5076,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+03511748,2026-10-14T12:36:39.383038+00:00,4.5,Node 01 — North Alleyway CCTV-04,0.5044,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+032AF31C,2026-10-14T12:36:39.535087+00:00,5.5,Node 01 — North Alleyway CCTV-04,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+2E4D57CA,2026-10-14T12:36:39.645307+00:00,6.5,Node 01 — North Alleyway CCTV-04,0.5032,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+84FCA153,2026-10-14T12:36:39.754980+00:00,7.5,Node 01 — North Alleyway CCTV-04,0.5021,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+016F4BB0,2026-10-14T12:36:39.851677+00:00,8.5,Node 01 — North Alleyway CCTV-04,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+B68C8E1F,2026-10-14T12:37:22.521471+00:00,0.0,Node 01 — North Alleyway CCTV-04,0.5056,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+DA155A41,2026-10-14T12:37:22.709384+00:00,1.0,Node 01 — North Alleyway CCTV-04,0.5148,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+9DD7A76D,2026-10-14T12:37:22.827978+00:00,2.0,Node 01 — North Alleyway CCTV-04,0.514,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+6A3A2236,2026-10-14T12:37:22.935197+00:00,3.0,Node 01 — North Alleyway CCTV-04,0.5165,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+51F7C9BF,2026-10-14T12:37:23.036303+00:00,4.0,Node 01 — North Alleyway CCTV-04,0.5126,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+9D74FE72,2026-10-14T12:37:23.163082+00:00,5.0,Node 01 — North Alleyway CCTV-04,0.5137,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+1037FAC5,2026-10-14T12:37:23.271085+00:00,6.0,Node 01 — North Alleyway CCTV-04,0.5162,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+29283206,2026-10-14T12:37:23.376329+00:00,7.0,Node 01 — North Alleyway CCTV-04,0.5126,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+490797BF,2026-10-14T12:37:23.475300+00:00,8.0,Node 01 — North Alleyway CCTV-04,0.5126,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+BFB0AAAB,2026-10-14T12:37:23.595735+00:00,9.0,Node 01 — North Alleyway CCTV-04,0.5131,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+3DD7763D,2026-10-14T12:37:44.173312+00:00,0.5,Node 01 — North Alleyway CCTV-04,0.5096,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+BD231629,2026-10-14T12:37:44.290683+00:00,1.5,Node 01 — North Alleyway CCTV-04,0.5073,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+24D7F522,2026-10-14T12:38:11.918479+00:00,0.5,Node 01 — North Alleyway CCTV-04,0.5079,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+1376685A,2026-10-14T12:38:12.086737+00:00,1.5,Node 01 — North Alleyway CCTV-04,0.5075,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+659F55CB,2026-10-14T12:38:43.065435+00:00,0.5,Node 01 — North Alleyway CCTV-04,0.5047,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+9C7E2C9B,2026-10-14T12:38:43.263090+00:00,1.5,Node 01 — North Alleyway CCTV-04,0.504,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+5D8F09DB,2026-10-14T12:38:43.364064+00:00,2.5,Node 01 — North Alleyway CCTV-04,0.5027,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+DDFD4EED,2026-10-14T12:38:43.475888+00:00,3.5,Node 01 — North Alleyway CCTV-04,0.5044,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+069CDF2D,2026-10-14T12:38:43.577576+00:00,4.5,Node 01 — North Alleyway CCTV-04,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+8960459C,2026-10-14T12:38:43.682612+00:00,5.5,Node 01 — North Alleyway CCTV-04,0.5028,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+0C6B8EE0,2026-10-14T12:38:43.789967+00:00,6.5,Node 01 — North Alleyway CCTV-04,0.5042,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+EBB16FDC,2026-10-14T12:38:43.897540+00:00,7.5,Node 01 — North Alleyway CCTV-04,0.506,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+A1305F42,2026-10-14T12:38:44.009243+00:00,8.5,Node 01 — North Alleyway CCTV-04,0.5051,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+A02D3B5E,2026-10-14T12:43:46.109855+00:00,3.0,Unknown Location,0.5041,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+BD9873F5,2026-10-14T12:43:46.240641+00:00,4.5,Unknown Location,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+86E0C796,2026-10-14T12:43:46.394121+00:00,6.0,Unknown Location,0.5054,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+9DFA142A,2026-10-14T12:43:46.522867+00:00,7.5,Unknown Location,0.506,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+FEB5B3BF,2026-10-14T12:43:46.691129+00:00,9.0,Unknown Location,0.505,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+7EA58297,2026-10-14T12:43:47.736224+00:00,1.0,Unknown Location,0.5073,LOW,cnn,PENDING,Potential distress event - requires human verification.
+35492A47,2026-10-14T12:43:49.076014+00:00,1.0,Unknown Location,0.5106,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+C0D97633,2026-10-14T12:43:49.268817+00:00,2.5,Unknown Location,0.5087,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+2D01C55D,2026-10-14T12:43:49.480170+00:00,4.0,Unknown Location,0.5059,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+C97DB881,2026-10-14T12:43:49.599024+00:00,5.5,Unknown Location,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+F54D4316,2026-10-14T12:43:49.717834+00:00,7.0,Unknown Location,0.5031,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+4DC80A9A,2026-10-14T12:43:49.852158+00:00,8.5,Unknown Location,0.502,LOW,cnn_lstm,PENDING,Potential distress event - requires human verification.
+F44A33B3,2026-10-14T13:01:47.683567+00:00,3.0,Test Lab,0.501,LOW,cnn,PENDING,Potential distress event - requires human verification.
+C6E495CE,2026-10-14T13:15:30.962092+00:00,3.0,Test Lab,0.501,LOW,cnn,PENDING,Potential distress event - requires human verification.
